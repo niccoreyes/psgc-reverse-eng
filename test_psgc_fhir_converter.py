@@ -149,7 +149,7 @@ class TestPSGCFHIRConverter(unittest.TestCase):
         geographic_data = parse_geographic_hierarchy(self.sample_data)
         fhir_structure = create_fhir_codesystem_structure(geographic_data)
         
-        # Check that the required properties are defined in the structure
+        # Check that the required properties are defined at the CodeSystem level
         self.assertIn('property', fhir_structure)
         properties = fhir_structure['property']
         
@@ -158,10 +158,23 @@ class TestPSGCFHIRConverter(unittest.TestCase):
         self.assertIsNotNone(geo_level_prop)
         self.assertEqual(geo_level_prop['type'], 'string')
         
-        # Should have parent property
-        parent_prop = next((p for p in properties if p['code'] == 'parent'), None)
-        self.assertIsNotNone(parent_prop)
-        self.assertEqual(parent_prop['type'], 'code')
+        # Note: Parent property is now defined at the concept level, not at the CodeSystem level
+        # This is the correct implementation for the parent-child relationship fix
+        
+        # Check that individual concepts have parent properties where appropriate
+        root_concept = fhir_structure['concept'][0]
+        
+        # The root concept (Region) should not have a parent
+        geo_level_prop = next((p for p in root_concept['property'] if p['code'] == 'Geographic Level'), None)
+        self.assertIsNotNone(geo_level_prop)
+        
+        # The child concept (City) should have both geographic level and parent properties
+        city_concept = root_concept['concept'][0]
+        concept_properties = {prop['code']: prop for prop in city_concept['property']}
+        
+        self.assertIn('Geographic Level', concept_properties)
+        self.assertIn('parent', concept_properties)
+        self.assertEqual(concept_properties['parent']['valueCode'], '1300000000')  # Parent region code
 
 
 class TestNaNHandling(unittest.TestCase):

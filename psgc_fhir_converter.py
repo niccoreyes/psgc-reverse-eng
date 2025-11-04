@@ -123,9 +123,35 @@ def get_parent_code(psgc_code: str, level: str) -> Optional[str]:
         return None
 
 
+def get_parent_code_with_validation(psgc_code: str, level: str, valid_codes: set) -> Optional[str]:
+    """
+    Determine the parent PSGC code and validate that it exists in the dataset.
+    If the calculated parent code doesn't exist in the dataset, returns None.
+    This function addresses the "Parent code not found" validation errors that
+    occur when FHIR servers validate parent-child relationships in CodeSystems.
+    
+    Args:
+        psgc_code (str): The 10-digit PSGC code
+        level (str): Geographic level (Reg, Prov, City, Mun, Bgy, SubMun)
+        valid_codes (set): Set of all valid PSGC codes in the dataset
+        
+    Returns:
+        Optional[str]: The parent PSGC code that exists in the dataset, or None
+    """
+    potential_parent = get_parent_code(psgc_code, level)
+    if potential_parent and potential_parent in valid_codes:
+        return potential_parent
+    else:
+        # This handles the case where the calculated parent code doesn't exist in the dataset
+        # Previously, this would cause "Parent code not found" errors during FHIR server validation
+        return None
+
+
 def parse_geographic_hierarchy(df: pd.DataFrame) -> List[Dict[str, Any]]:
     """
     Parse the geographic hierarchy from the PSGC data.
+    This function incorporates validation to ensure parent codes exist in the dataset,
+    preventing "Parent code not found" errors during FHIR server validation.
     
     Args:
         df (pd.DataFrame): DataFrame with PSGC data
@@ -133,13 +159,23 @@ def parse_geographic_hierarchy(df: pd.DataFrame) -> List[Dict[str, Any]]:
     Returns:
         List[Dict[str, Any]]: List of geographic entities with hierarchy information
     """
+    # Create a set of valid codes to validate parent codes against
+    valid_codes = set()
+    for _, row in df.iterrows():
+        psgc_code = str(row['10-digit PSGC']).strip()
+        valid_codes.add(psgc_code)
+    
     geographic_data = []
     
     for _, row in df.iterrows():
         psgc_code = str(row['10-digit PSGC']).strip()
         name = row['Name']
         level = row['Geographic Level']
-        parent_code = get_parent_code(psgc_code, level)
+        # Use validated parent calculation to ensure parent codes exist in the dataset
+        # This prevents "Parent code not found" errors during FHIR server validation
+        # If a calculated parent doesn't exist in the dataset, this returns None
+        # effectively treating the entity as a root-level entity in the hierarchy
+        parent_code = get_parent_code_with_validation(psgc_code, level, valid_codes)
         
         geographic_entity = {
             'code': psgc_code,
@@ -164,6 +200,8 @@ def parse_geographic_hierarchy(df: pd.DataFrame) -> List[Dict[str, Any]]:
 def build_hierarchy_tree(geographic_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Build a hierarchical tree structure from geographic data.
+    This function now handles missing parent codes gracefully by treating entities
+    with non-existent parents as root-level entities.
     
     Args:
         geographic_data: List of geographic entities with hierarchy information
@@ -180,10 +218,12 @@ def build_hierarchy_tree(geographic_data: List[Dict[str, Any]]) -> List[Dict[str
     for entity in geo_map.values():
         parent_code = entity['parent_code']
         if parent_code and parent_code in geo_map:
-            # Add this entity as a child to its parent
+            # Add this entity as a child to its parent (valid parent-child relationship)
             geo_map[parent_code]['children'].append(entity)
         else:
-            # This is a root level entity
+            # This is a root level entity (no parent or parent doesn't exist in dataset)
+            # This handles the case where the parent code was calculated but doesn't exist in the dataset
+            # The entity is treated as a root-level entity in the hierarchy
             roots.append(entity)
     
     return roots
@@ -270,7 +310,8 @@ def create_fhir_codesystem_structure(geographic_data: List[Dict[str, Any]]) -> D
             {
                 "telecom": [
                     {
-                        "system": "email"
+                        "system": "email",
+                        "value": "admin@upmsilab.org"  # Adding required value field for contact
                     }
                 ]
             }
@@ -402,6 +443,31 @@ def validate_against_fhir_terminology_server_requirements(fhir_structure: Dict[s
         return False
     
     return True
+
+
+def validate_parent_child_relationships(geographic_data: List[Dict[str, Any]]) -> List[str]:
+    """
+    Validates parent-child relationships in geographic data to ensure all parent codes exist.
+    
+    Args:
+        geographic_data: List of geographic entities with hierarchy information
+        
+    Returns:
+        List[str]: List of error messages for any invalid relationships found
+    """
+    errors = []
+    # Create a set of all valid codes for quick lookup
+    valid_codes = {entity['code'] for entity in geographic_data}
+    
+    for entity in geographic_data:
+        entity_code = entity['code']
+        parent_code = entity.get('parent_code')
+        
+        if parent_code:
+            if parent_code not in valid_codes:
+                errors.append(f"Entity {entity_code} has parent code {parent_code} that does not exist in dataset")
+    
+    return errors
 
 
 def main():
