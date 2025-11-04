@@ -79,3 +79,66 @@ Each concept in the FHIR CodeSystem includes:
 - `display`: The name of the geographic entity
 - `definition`: A description of the geographic entity
 - `property`: Properties including the geographic level and parent relationship
+
+## Uploading to FHIR Server
+
+This project includes scripts to upload the generated FHIR CodeSystem to a FHIR terminology server:
+
+### Test Upload
+
+To upload with a test ID for safe testing:
+
+```bash
+export FHIR_SERVER_API_KEY="your_api_key_here"
+python upload_test_script.py --input psgc_fhir_output.json --server-url https://tx.fhirlab.net/fhir --test-id test-psgc-geographic-codes
+```
+
+With dry-run mode for testing without actual upload:
+
+```bash
+python upload_test_script.py --input psgc_fhir_output.json --server-url https://tx.fhirlab.net/fhir --test-id test-psgc-geographic-codes --dry-run
+```
+
+### Production Upload
+
+To upload with the original ID for production use:
+
+```bash
+export FHIR_SERVER_API_KEY="your_api_key_here"
+python upload_production_script.py --input psgc_fhir_output.json --server-url https://tx.fhirlab.net/fhir --confirm
+```
+
+With dry-run mode:
+
+```bash
+python upload_production_script.py --input psgc_fhir_output.json --server-url https://tx.fhirlab.net/fhir --dry-run
+```
+
+### Undo/Remove
+
+To delete an uploaded CodeSystem:
+
+```bash
+export FHIR_SERVER_API_KEY="your_api_key_here"
+python undo_script.py --server-url https://tx.fhirlab.net/fhir --codesystem-id psgc-geographic-codes
+```
+
+### Environment Variables
+
+The upload scripts may require authentication depending on your FHIR server configuration:
+
+```bash
+export FHIR_SERVER_API_KEY="your_api_key_here"  # Only required if your server needs authentication
+```
+
+Note: tx.fhirlab.net may not require API keys for access. Check the server documentation for specific authentication requirements.
+
+### Mock FHIR Server for Testing
+
+For local testing without a real FHIR server, you can run the included mock server:
+
+```bash
+python mock_fhir_server.py
+```
+
+The mock server requires an API key for compatibility but doesn't validate it. Then use `http://localhost:8000/fhir` as your server URL.

@@ -106,7 +106,7 @@ class TestPSGCFHIRConverter(unittest.TestCase):
         # Check that geographic level property is present
         for concept in [root_concept, city_concept, bgy_concept]:
             self.assertIn('property', concept)
-            geo_level_prop = next(p for p in concept['property'] if p['code'] == 'geographicLevel')
+            geo_level_prop = next(p for p in concept['property'] if p['code'] == 'Geographic Level')
             self.assertIsNotNone(geo_level_prop)
     
     def test_validate_fhir_codesystem_structure(self):
@@ -132,15 +132,15 @@ class TestPSGCFHIRConverter(unittest.TestCase):
         self.assertIn('property', fhir_structure)
         properties = fhir_structure['property']
         
-        # Should have geographicLevel property
-        geo_level_prop = next((p for p in properties if p['code'] == 'geographicLevel'), None)
+        # Should have Geographic Level property
+        geo_level_prop = next((p for p in properties if p['code'] == 'Geographic Level'), None)
         self.assertIsNotNone(geo_level_prop)
-        self.assertEqual(geo_level_prop['type'], 'code')
+        self.assertEqual(geo_level_prop['type'], 'string')
         
-        # Should have part-of property
-        part_of_prop = next((p for p in properties if p['code'] == 'part-of'), None)
-        self.assertIsNotNone(part_of_prop)
-        self.assertEqual(part_of_prop['type'], 'code')
+        # Should have parent property
+        parent_prop = next((p for p in properties if p['code'] == 'parent'), None)
+        self.assertIsNotNone(parent_prop)
+        self.assertEqual(parent_prop['type'], 'code')
 
 
 if __name__ == '__main__':

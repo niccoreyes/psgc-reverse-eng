@@ -209,18 +209,18 @@ def convert_entity_to_fhir_concept(entity: Dict[str, Any], include_children: boo
     # Add properties
     properties = []
     
-    # Geographic level property
-    properties.append({
-        "code": "geographicLevel",
-        "valueCode": entity['level']
-    })
-    
-    # Part-of relationship property for property-based hierarchy
+    # Parent relationship property (matching server format)
     if entity['parent_code']:
         properties.append({
-            "code": "part-of",
+            "code": "parent",
             "valueCode": entity['parent_code']
         })
+    
+    # Geographic level property (matching server format - using valueString instead of valueCode)
+    properties.append({
+        "code": "Geographic Level",
+        "valueString": entity['level']
+    })
     
     if properties:
         concept["property"] = properties
@@ -252,43 +252,31 @@ def create_fhir_codesystem_structure(geographic_data: List[Dict[str, Any]]) -> D
     fhir_structure = {
         "resourceType": "CodeSystem",
         "id": "psgc-geographic-codes",
-        "url": "https://github.com/Philippine-Statistics-Authority/psgc-fhir-codesystem",
-        "version": "2025.1",
-        "name": "PSGC_GeographicCodes",
-        "title": "Philippine Standard Geographic Codes",
-        "status": "active",
-        "experimental": False,
-        "date": "2025-09-30",
-        "publisher": "Philippine Statistics Authority",
+        "url": "https://ontoserver.upmsilab.org/psgc",
+        "version": "2",
+        "name": "Psgc",
+        "title": "PSGC - COMPLETE",
+        "status": "draft",
         "contact": [
             {
-                "name": "Philippine Statistics Authority",
                 "telecom": [
                     {
-                        "system": "url",
-                        "value": "https://psa.gov.ph"
+                        "system": "email"
                     }
                 ]
             }
         ],
-        "description": "The Philippine Standard Geographic Code (PSGC) is a systematic classification and coding of geographic units in the Philippines.",
+        "caseSensitive": False,
+        "valueSet": "https://ontoserver.upmsilab.org/psgc",
         "hierarchyMeaning": "part-of",
         "compositional": False,
-        "versionNeeded": False,
+        "versionNeeded": True,
         "content": "complete",
         "count": len(geographic_data),
         "property": [
             {
-                "code": "geographicLevel",
-                "uri": "http://hl7.org/fhir/StructureDefinition/geographicLevel",
-                "description": "The geographic level of this entity (Reg, Prov, City, Mun, Bgy)",
-                "type": "code"
-            },
-            {
-                "code": "part-of",
-                "uri": "http://hl7.org/fhir/StructureDefinition/part-of",
-                "description": "The parent geographic entity in the hierarchy",
-                "type": "code"
+                "code": "Geographic Level",
+                "type": "string"
             }
         ],
         "concept": []
