@@ -13,7 +13,33 @@ import os
 import sys
 import logging
 from typing import Dict, Any, Optional
+import math
 from psgc_fhir_converter import validate_fhir_codesystem_structure, validate_against_fhir_terminology_server_requirements
+
+
+def handle_nan_in_data(obj):
+    """
+    Recursively handle NaN values in data structures, converting them to None.
+    
+    This function is critical for handling data that originates from pandas DataFrames,
+    which use NaN (Not a Number) to represent missing numeric values. Since NaN is not
+    valid JSON, attempting to serialize data containing NaN values will result in a
+    "Out of range float values are not JSON compliant: nan" error.
+    
+    Args:
+        obj: The data structure to process (dict, list, or primitive)
+        
+    Returns:
+        Processed data structure with NaN values replaced by None
+    """
+    if isinstance(obj, dict):
+        return {key: handle_nan_in_data(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [handle_nan_in_data(item) for item in obj]
+    elif isinstance(obj, float) and math.isnan(obj):
+        return None
+    else:
+        return obj
 
 
 # Set up logging

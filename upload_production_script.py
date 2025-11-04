@@ -14,7 +14,33 @@ import sys
 import logging
 from typing import Dict, Any, Optional
 import time
+import math
 from psgc_fhir_converter import validate_fhir_codesystem_structure, validate_against_fhir_terminology_server_requirements
+
+
+def handle_nan_in_data(obj):
+    """
+    Recursively handle NaN values in data structures, converting them to None.
+    
+    This function is critical for handling data that originates from pandas DataFrames,
+    which use NaN (Not a Number) to represent missing numeric values. Since NaN is not
+    valid JSON, attempting to serialize data containing NaN values will result in a
+    "Out of range float values are not JSON compliant: nan" error.
+    
+    Args:
+        obj: The data structure to process (dict, list, or primitive)
+        
+    Returns:
+        Processed data structure with NaN values replaced by None
+    """
+    if isinstance(obj, dict):
+        return {key: handle_nan_in_data(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [handle_nan_in_data(item) for item in obj]
+    elif isinstance(obj, float) and math.isnan(obj):
+        return None
+    else:
+        return obj
 
 
 # Set up logging
@@ -150,8 +176,11 @@ def upload_codesystem_to_server(fhir_codesystem: Dict[str, Any], server_url: str
     """
     Upload the FHIR CodeSystem to the specified server.
     
+    This function handles potential NaN (Not a Number) values in the FHIR CodeSystem
+    that could cause JSON serialization errors during the upload process.
+    
     Args:
-        fhir_codesystem (Dict[str, Any]): The FHIR CodeSystem to upload
+        fhir_codesystem (Dict[str, Any]): The FHIR CodeSystem to upload (may contain NaN values)
         server_url (str): Base URL of the FHIR server
         
     Returns:
@@ -175,8 +204,12 @@ def upload_codesystem_to_server(fhir_codesystem: Dict[str, Any], server_url: str
             method = requests.post
             logger.info(f"Creating new CodeSystem with ID: {fhir_codesystem['id']}")
         
+        # Handle NaN values before uploading to prevent JSON serialization errors
+        # NaN values (from pandas DataFrames) are not JSON serializable
+        safe_fhir_codesystem = handle_nan_in_data(fhir_codesystem)
+        
         # Make the request to create/update the resource
-        response = method(upload_url, json=fhir_codesystem, headers=headers, timeout=30)
+        response = method(upload_url, json=safe_fhir_codesystem, headers=headers, timeout=30)
         
         if response.status_code in [200, 201]:  # Success or created
             logger.info(f"Successfully uploaded CodeSystem with ID: {fhir_codesystem.get('id', 'unknown')}")

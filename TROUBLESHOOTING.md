@@ -168,6 +168,24 @@ The current implementation loads the entire file into memory. For extremely larg
 1. Check the server response code (should be 204 for successful deletion)
 2. Try to access the CodeSystem via the server's API (should return 404)
 
+## NaN (Not a Number) Value Issues
+
+### Problem: "Out of range float values are not JSON compliant: nan"
+
+**Symptoms:**
+- Upload scripts fail with error: "Out of range float values are not JSON compliant: nan"
+- Error occurs during JSON serialization of FHIR CodeSystem data
+- Common when source data (from pandas DataFrames) contains missing numeric values
+
+**Solution:**
+The upload scripts now automatically handle NaN values by converting them to null during processing:
+- NaN values in numeric fields are converted to null (None in Python)
+- This happens automatically during upload processing
+- No action required from user - the scripts handle this internally
+
+**Explanation:**
+The PSGC to FHIR converter uses pandas for data processing, which naturally represents missing numeric values as NaN (Not a Number). However, JSON specification does not support NaN values, causing serialization errors during upload. The fix ensures all NaN values are safely converted to null before JSON serialization.
+
 ## Additional Support
 
 If you continue to experience issues:

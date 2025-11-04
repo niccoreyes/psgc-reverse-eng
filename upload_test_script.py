@@ -13,6 +13,7 @@ import os
 import sys
 import logging
 from typing import Dict, Any, Optional
+from copy import deepcopy
 from psgc_fhir_converter import validate_fhir_codesystem_structure, validate_against_fhir_terminology_server_requirements
 
 
@@ -46,37 +47,70 @@ def load_fhir_codesystem(file_path: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def handle_nan_in_data(obj):
+    """
+    Recursively handle NaN values in data structures, converting them to None.
+    
+    This function is critical for handling data that originates from pandas DataFrames,
+    which use NaN (Not a Number) to represent missing numeric values. Since NaN is not
+    valid JSON, attempting to serialize data containing NaN values will result in a
+    "Out of range float values are not JSON compliant: nan" error.
+    
+    Args:
+        obj: The data structure to process (dict, list, or primitive)
+        
+    Returns:
+        Processed data structure with NaN values replaced by None
+    """
+    import math
+    
+    if isinstance(obj, dict):
+        return {key: handle_nan_in_data(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [handle_nan_in_data(item) for item in obj]
+    elif isinstance(obj, float) and math.isnan(obj):
+        return None
+    else:
+        return obj
+
+
 def modify_codesystem_for_test(fhir_codesystem: Dict[str, Any], test_id: str) -> Dict[str, Any]:
     """
     Modify a FHIR CodeSystem to use a test ID and other test-specific values.
     
+    This function replaces the previous approach using json.loads(json.dumps(fhir_codesystem))
+    for deep copying, which would fail when the FHIR CodeSystem contained NaN values
+    (typically originating from pandas DataFrames). NaN values are not JSON serializable,
+    so the json round-trip approach would raise a "not JSON compliant" error.
+    
     Args:
-        fhir_codesystem (Dict[str, Any]): Original FHIR CodeSystem
+        fhir_codesystem (Dict[str, Any]): Original FHIR CodeSystem (may contain NaN values)
         test_id (str): Test ID to use for the CodeSystem
         
     Returns:
         Dict[str, Any]: Modified FHIR CodeSystem with test values
     """
-    # Create a deep copy of the original codesystem
-    test_codesystem = json.loads(json.dumps(fhir_codesystem))
+    # Create a deep copy of the original codesystem using copy.deepcopy to avoid JSON serialization issues with NaN
+    # Additionally, handle any NaN values by converting them to None to ensure JSON compliance
+    fhir_codesystem_safe = handle_nan_in_data(deepcopy(fhir_codesystem))
     
     # Modify the ID to use the test ID
-    test_codesystem['id'] = test_id
+    fhir_codesystem_safe['id'] = test_id
     
     # Modify the URL to indicate it's a test version
-    if 'url' in test_codesystem:
-        original_url = test_codesystem['url']
-        test_codesystem['url'] = original_url + '-test'
+    if 'url' in fhir_codesystem_safe:
+        original_url = fhir_codesystem_safe['url']
+        fhir_codesystem_safe['url'] = original_url + '-test'
     
     # Add a test-specific title
-    if 'title' in test_codesystem:
-        original_title = test_codesystem['title']
-        test_codesystem['title'] = f"[TEST] {original_title}"
+    if 'title' in fhir_codesystem_safe:
+        original_title = fhir_codesystem_safe['title']
+        fhir_codesystem_safe['title'] = f"[TEST] {original_title}"
     
     # Update status to draft if not already
-    test_codesystem['status'] = 'draft'
+    fhir_codesystem_safe['status'] = 'draft'
     
-    return test_codesystem
+    return fhir_codesystem_safe
 
 
 def validate_fhir_for_upload(fhir_codesystem: Dict[str, Any]) -> bool:
@@ -132,8 +166,11 @@ def upload_codesystem_to_server(fhir_codesystem: Dict[str, Any], server_url: str
     """
     Upload the FHIR CodeSystem to the specified server.
     
+    This function handles potential NaN (Not a Number) values in the FHIR CodeSystem
+    that could cause JSON serialization errors during the upload process.
+    
     Args:
-        fhir_codesystem (Dict[str, Any]): The FHIR CodeSystem to upload
+        fhir_codesystem (Dict[str, Any]): The FHIR CodeSystem to upload (may contain NaN values)
         server_url (str): Base URL of the FHIR server
         
     Returns:
@@ -145,8 +182,12 @@ def upload_codesystem_to_server(fhir_codesystem: Dict[str, Any], server_url: str
         # Construct the full URL for the upload
         upload_url = f"{server_url.rstrip('/')}/CodeSystem"
         
+        # Handle NaN values before uploading to prevent JSON serialization errors
+        # NaN values (from pandas DataFrames) are not JSON serializable
+        safe_fhir_codesystem = handle_nan_in_data(fhir_codesystem)
+        
         # Make the POST request to create the resource
-        response = requests.post(upload_url, json=fhir_codesystem, headers=headers, timeout=30)
+        response = requests.post(upload_url, json=safe_fhir_codesystem, headers=headers, timeout=30)
         
         if response.status_code in [200, 201]:  # Success or created
             logger.info(f"Successfully uploaded CodeSystem with ID: {fhir_codesystem.get('id', 'unknown')}")

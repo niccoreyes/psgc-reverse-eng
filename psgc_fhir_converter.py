@@ -217,9 +217,18 @@ def convert_entity_to_fhir_concept(entity: Dict[str, Any], include_children: boo
         })
     
     # Geographic level property (matching server format - using valueString instead of valueCode)
+    # Handle NaN/None values by providing a default, since the server expects this property
+    import math
+    level_value = entity['level']
+    if level_value is None or (isinstance(level_value, float) and math.isnan(level_value)):
+        # Provide a default value if the level is missing/NaN
+        # For PSGC codes that have missing levels, we'll use a conservative approach
+        # This addresses the specific error with codes like 990100000 and 1999900000
+        level_value = 'Unknown'
+    
     properties.append({
-        "code": "Geographic Level",
-        "valueString": entity['level']
+        "code": "Geographic Level", 
+        "valueString": level_value
     })
     
     if properties:

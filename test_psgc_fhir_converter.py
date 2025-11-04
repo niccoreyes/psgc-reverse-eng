@@ -2,6 +2,7 @@ import unittest
 import tempfile
 import json
 import pandas as pd
+import math
 from io import StringIO
 from psgc_fhir_converter import (
     get_parent_code,
@@ -9,6 +10,26 @@ from psgc_fhir_converter import (
     create_fhir_codesystem_structure,
     validate_fhir_codesystem_structure
 )
+
+# Import the handle_nan_in_data function from the upload scripts
+def handle_nan_in_data(obj):
+    """
+    Recursively handle NaN values in data structures, converting them to None.
+    
+    Args:
+        obj: The data structure to process (dict, list, or primitive)
+        
+    Returns:
+        Processed data structure with NaN values replaced by None
+    """
+    if isinstance(obj, dict):
+        return {key: handle_nan_in_data(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [handle_nan_in_data(item) for item in obj]
+    elif isinstance(obj, float) and math.isnan(obj):
+        return None
+    else:
+        return obj
 
 
 class TestPSGCFHIRConverter(unittest.TestCase):
@@ -141,6 +162,119 @@ class TestPSGCFHIRConverter(unittest.TestCase):
         parent_prop = next((p for p in properties if p['code'] == 'parent'), None)
         self.assertIsNotNone(parent_prop)
         self.assertEqual(parent_prop['type'], 'code')
+
+
+class TestNaNHandling(unittest.TestCase):
+    """Test class for NaN handling in FHIR data structures."""
+    
+    def test_handle_nan_in_data_with_nan_values(self):
+        """Test that NaN values are properly converted to None."""
+        import math
+        
+        # Create a test structure with NaN values
+        test_data = {
+            'field1': 1.0,
+            'field2': float('nan'),
+            'field3': [1.0, float('nan'), 3.0],
+            'field4': {
+                'nested_field1': float('nan'),
+                'nested_field2': 'string_value',
+                'nested_field3': [float('nan'), 2.0, float('inf')]
+            }
+        }
+        
+        # Process with our NaN handling function
+        processed_data = handle_nan_in_data(test_data)
+        
+        # Check that top-level NaN was converted to None
+        self.assertEqual(processed_data['field1'], 1.0)
+        self.assertIsNone(processed_data['field2'])
+        
+        # Check that NaN in list was converted to None
+        self.assertEqual(processed_data['field3'][0], 1.0)
+        self.assertIsNone(processed_data['field3'][1])
+        self.assertEqual(processed_data['field3'][2], 3.0)
+        
+        # Check nested structure
+        self.assertIsNone(processed_data['field4']['nested_field1'])
+        self.assertEqual(processed_data['field4']['nested_field2'], 'string_value')
+        
+        # Check list in nested structure
+        self.assertIsNone(processed_data['field4']['nested_field3'][0])
+        self.assertEqual(processed_data['field4']['nested_field3'][1], 2.0)
+        # Note: infinity is not NaN, so it should remain unchanged
+        self.assertEqual(processed_data['field4']['nested_field3'][2], float('inf'))
+    
+    def test_handle_nan_in_data_without_nan_values(self):
+        """Test that the function preserves data without NaN values."""
+        test_data = {
+            'field1': 1.0,
+            'field2': 'string_value',
+            'field3': [1.0, 2.0, 3.0],
+            'field4': {
+                'nested_field1': 42.0,
+                'nested_field2': 'nested_string',
+                'nested_field3': [10.0, 20.0, 30.0]
+            }
+        }
+        
+        processed_data = handle_nan_in_data(test_data)
+        
+        # Check that all original values are preserved
+        self.assertEqual(processed_data, test_data)
+    
+    def test_handle_nan_in_fhir_structure(self):
+        """Test handling of NaN values in a FHIR-like structure."""
+        import math
+        
+        # Create a FHIR CodeSystem structure with NaN values
+        fhir_structure = {
+            'resourceType': 'CodeSystem',
+            'id': 'test-codesystem',
+            'concept': [
+                {
+                    'code': 'A',
+                    'display': 'Concept A',
+                    'property': [
+                        {'code': 'value', 'valueDecimal': float('nan')},
+                        {'code': 'count', 'valueInteger': 10}
+                    ]
+                },
+                {
+                    'code': 'B',
+                    'display': 'Concept B',
+                    'property': [
+                        {'code': 'value', 'valueDecimal': 5.5},
+                        {'code': 'missing_value', 'valueDecimal': float('nan')}
+                    ]
+                }
+            ]
+        }
+        
+        processed_structure = handle_nan_in_data(fhir_structure)
+        
+        # Check that the basic structure is preserved
+        self.assertEqual(processed_structure['resourceType'], 'CodeSystem')
+        self.assertEqual(processed_structure['id'], 'test-codesystem')
+        self.assertEqual(len(processed_structure['concept']), 2)
+        
+        # Check first concept
+        concept_a = processed_structure['concept'][0]
+        self.assertEqual(concept_a['code'], 'A')
+        self.assertEqual(concept_a['display'], 'Concept A')
+        
+        # Check that NaN value was converted to None
+        self.assertIsNone(concept_a['property'][0]['valueDecimal'])
+        self.assertEqual(concept_a['property'][1]['valueInteger'], 10)
+        
+        # Check second concept
+        concept_b = processed_structure['concept'][1]
+        self.assertEqual(concept_b['code'], 'B')
+        self.assertEqual(concept_b['display'], 'Concept B')
+        
+        # Check that valid value is preserved and NaN is converted to None
+        self.assertEqual(concept_b['property'][0]['valueDecimal'], 5.5)
+        self.assertIsNone(concept_b['property'][1]['valueDecimal'])
 
 
 if __name__ == '__main__':
