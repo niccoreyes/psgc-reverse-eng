@@ -96,36 +96,41 @@ class TestPSGCFHIRConverter(unittest.TestCase):
         # Check basic structure
         self.assertEqual(fhir_structure['resourceType'], 'CodeSystem')
         self.assertEqual(fhir_structure['id'], 'psgc-geographic-codes')
-        self.assertEqual(fhir_structure['count'], 3)
+        # Count should be len(geographic_data) + 1 for the root concept
+        self.assertEqual(fhir_structure['count'], len(geographic_data) + 1)
         
         # Check that there are concepts
-        self.assertEqual(len(fhir_structure['concept']), 1)  # Should have 1 root concept with children
+        self.assertEqual(len(fhir_structure['concept']), 1)  # Should have 1 root concept (Philippine Standard Geographic Code)
         
-        # Check the root concept is the region
+        # Check the root concept is the Philippine Standard Geographic Code
         root_concept = fhir_structure['concept'][0]
-        self.assertEqual(root_concept['code'], '1300000000')
-        self.assertEqual(root_concept['display'], 'National Capital Region (NCR)')
+        self.assertEqual(root_concept['code'], '0000000000')
+        self.assertEqual(root_concept['display'], 'Philippine Standard Geographic Code')
         
-        # Check it has children
+        # The actual geographic entities should be children of the root concept
         self.assertIn('concept', root_concept)
-        self.assertEqual(len(root_concept['concept']), 1)  # Caloocan city
+        child_concepts = root_concept['concept']
+        self.assertEqual(len(child_concepts), 1)  # Should contain the NCR region as a child
         
-        # Check the child concept
-        city_concept = root_concept['concept'][0]
+        # Check the first child concept (NCR region)
+        region_concept = child_concepts[0]
+        self.assertEqual(region_concept['code'], '1300000000')
+        self.assertEqual(region_concept['display'], 'National Capital Region (NCR)')
+        
+        # Check it has children (Caloocan city)
+        self.assertIn('concept', region_concept)
+        city_concept = region_concept['concept'][0]
         self.assertEqual(city_concept['code'], '1380100000')
         self.assertEqual(city_concept['display'], 'City of Caloocan')
         
-        # Check it has grandchildren
+        # Check it has grandchildren (Barangay 1)
         self.assertIn('concept', city_concept)
-        self.assertEqual(len(city_concept['concept']), 1)  # Barangay 1
-        
-        # Check the grandchild concept
         bgy_concept = city_concept['concept'][0]
         self.assertEqual(bgy_concept['code'], '1380100001')
         self.assertEqual(bgy_concept['display'], 'Barangay 1')
         
-        # Check that geographic level property is present
-        for concept in [root_concept, city_concept, bgy_concept]:
+        # Check that geographic level property is present on geographic concepts (not on the root)
+        for concept in [region_concept, city_concept, bgy_concept]:
             self.assertIn('property', concept)
             geo_level_prop = next(p for p in concept['property'] if p['code'] == 'Geographic Level')
             self.assertIsNotNone(geo_level_prop)
@@ -161,15 +166,23 @@ class TestPSGCFHIRConverter(unittest.TestCase):
         # Note: Parent property is now defined at the concept level, not at the CodeSystem level
         # This is the correct implementation for the parent-child relationship fix
         
-        # Check that individual concepts have parent properties where appropriate
+        # Check that the first concept is the root "Philippine Standard Geographic Code" which has no properties
         root_concept = fhir_structure['concept'][0]
+        self.assertEqual(root_concept['code'], '0000000000')
+        self.assertEqual(root_concept['display'], 'Philippine Standard Geographic Code')
+        # This root concept should not have properties
         
-        # The root concept (Region) should not have a parent
-        geo_level_prop = next((p for p in root_concept['property'] if p['code'] == 'Geographic Level'), None)
+        # Check that the child concepts (actual geographic entities) have properties
+        geographic_concepts = root_concept['concept']  # The actual regions, cities, etc.
+        self.assertGreater(len(geographic_concepts), 0)
+        
+        # The first geographic concept (Region) should not have a parent property
+        region_concept = geographic_concepts[0]
+        geo_level_prop = next((p for p in region_concept['property'] if p['code'] == 'Geographic Level'), None)
         self.assertIsNotNone(geo_level_prop)
         
         # The child concept (City) should have both geographic level and parent properties
-        city_concept = root_concept['concept'][0]
+        city_concept = region_concept['concept'][0]
         concept_properties = {prop['code']: prop for prop in city_concept['property']}
         
         self.assertIn('Geographic Level', concept_properties)

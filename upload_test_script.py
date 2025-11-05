@@ -97,10 +97,26 @@ def modify_codesystem_for_test(fhir_codesystem: Dict[str, Any], test_id: str) ->
     # Modify the ID to use the test ID
     fhir_codesystem_safe['id'] = test_id
     
-    # Modify the URL to indicate it's a test version
+    # Modify the URL to use a completely different test URI to avoid conflicts with the original
     if 'url' in fhir_codesystem_safe:
+        # Instead of appending -test to the original URL, use a completely different test URI
+        # This prevents "multiple-matches" errors when both URIs exist on the server
         original_url = fhir_codesystem_safe['url']
-        fhir_codesystem_safe['url'] = original_url + '-test'
+        # Extract the original path part after the domain
+        path_parts = original_url.split('/', 3)  # Split into ['https:', '', 'domain', 'path...']
+        if len(path_parts) >= 4:
+            path_part = path_parts[3]
+        else:
+            path_part = 'psgc'  # Fallback if original structure is unexpected
+        
+        # Create a completely different test URI to avoid conflicts
+        new_url = f'https://test.upmsilab.org/{path_part}-test'
+        fhir_codesystem_safe['url'] = new_url
+        
+        # Also update the valueSet property if it exists, to match the new URL
+        # This prevents "multiple-matches" errors when the FHIR server checks the implicit ValueSet
+        if 'valueSet' in fhir_codesystem_safe and fhir_codesystem_safe['valueSet'] == original_url:
+            fhir_codesystem_safe['valueSet'] = new_url
     
     # Add a test-specific title
     if 'title' in fhir_codesystem_safe:
@@ -168,6 +184,7 @@ def upload_codesystem_to_server(fhir_codesystem: Dict[str, Any], server_url: str
     
     This function handles potential NaN (Not a Number) values in the FHIR CodeSystem
     that could cause JSON serialization errors during the upload process.
+    It uses PUT to update an existing resource if one with the same ID already exists.
     
     Args:
         fhir_codesystem (Dict[str, Any]): The FHIR CodeSystem to upload (may contain NaN values)
@@ -179,18 +196,19 @@ def upload_codesystem_to_server(fhir_codesystem: Dict[str, Any], server_url: str
     try:
         headers = get_auth_headers()
         
-        # Construct the full URL for the upload
-        upload_url = f"{server_url.rstrip('/')}/CodeSystem"
+        # Use PUT to update the resource with the specific ID, which will overwrite if it exists
+        codesystem_id = fhir_codesystem.get('id', 'unknown')
+        upload_url = f"{server_url.rstrip('/')}/CodeSystem/{codesystem_id}"
         
         # Handle NaN values before uploading to prevent JSON serialization errors
         # NaN values (from pandas DataFrames) are not JSON serializable
         safe_fhir_codesystem = handle_nan_in_data(fhir_codesystem)
         
-        # Make the POST request to create the resource
-        response = requests.post(upload_url, json=safe_fhir_codesystem, headers=headers, timeout=30)
+        # Make the PUT request to update/create the resource with this ID
+        response = requests.put(upload_url, json=safe_fhir_codesystem, headers=headers, timeout=30)
         
         if response.status_code in [200, 201]:  # Success or created
-            logger.info(f"Successfully uploaded CodeSystem with ID: {fhir_codesystem.get('id', 'unknown')}")
+            logger.info(f"Successfully uploaded/updated CodeSystem with ID: {codesystem_id}")
             logger.info(f"Response: {response.status_code}")
             return True
         else:

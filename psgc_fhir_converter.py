@@ -37,87 +37,62 @@ def read_psgc_excel(file_path: str) -> pd.DataFrame:
 
 def get_parent_code(psgc_code: str, level: str) -> Optional[str]:
     """
-    Determine the parent PSGC code based on the geographic level.
-    Based on the understanding that PSGC code structure is:
-    - Digits 1-2: Region code
-    - Digits 3-5: Province/City code  
-    - Digits 6-8: Municipality/City code within Province
-    - Digits 9-10: Barangay number within Municipality/City
+    Determine the parent PSGC code based on the PSGC structure:
+    - Positions 1-2: Region code
+    - Positions 3-5: Province code  
+    - Positions 6-7: Municipality/City subdivision code
+    - Positions 8-10: Barangay code
     
     Geographic hierarchy:
-    - Reg (Region): No parent or part of the national level
-    - Prov (Province): Part of a Region
-    - City/Mun (City/Municipality): Part of a Province or Region (for highly urbanized cities)
-    - Bgy (Barangay): Part of a City/Municipality
-    - SubMun (Sub-Municipality): Part of a City/Municipality
+    - Root: Philippine Standard Geographic Code (0000000000)
+    - Reg (Region): Child of Root
+    - Prov (Province): Child of Region
+    - City/Mun (City/Municipality): Child of Province (or Region if highly urbanized city)
+    - SubMun (Intermediate level like districts in large cities): Child of City/Municipality
+    - Bgy (Barangay): Child of City/Municipality or SubMunicipality (district)
     
     Args:
         psgc_code (str): The 10-digit PSGC code
-        level (str): Geographic level (Reg, Prov, City, Mun, Bgy, SubMun)
+        level (str): Geographic level (Reg, Prov, City, Mun, SubMun, Bgy)
         
     Returns:
         Optional[str]: The parent PSGC code or None if no parent
     """
-    # Work with original string without zero-padding first, then pad to 10 digits if needed
-    code_original = str(psgc_code).strip()
-    code = code_original.zfill(10)  # Ensure 10-digit format with leading zeros if needed
+    # Ensure code is 10 digits with leading zeros if needed
+    code = str(psgc_code).strip().zfill(10)
     
     if level == 'Reg':
-        # Regions are top-level (no parent)
-        return None
+        # Regions are children of the root Philippine Standard Geographic Code
+        return '0000000000'
     elif level == 'Prov':
-        # Provinces are part of regions - first 2 digits identify the region
-        region_code = code[:2] + '00000000'
-        region_numeric = str(int(region_code))
-        return region_numeric if region_numeric != code_original else None
+        # Provinces belong to regions (first 2 digits + zeros)
+        return code[:2].ljust(10, '0')
     elif level in ['City', 'Mun']:  # City or Municipality
-        # Cities and municipalities are part of provinces
-        # The parent is identified by first 5 digits + '00000'
-        province_code = code[:5] + '00000'
-        province_numeric = str(int(province_code))
+        # Cities/Municipalities belong to provinces (first 5 digits + zeros)
+        province_code = code[:5].ljust(10, '0')
+        region_code = code[:2].ljust(10, '0')
         
-        # If the province code matches the current code, this entity might be directly under region
-        # (e.g. in the case of NCR or other special administrative regions)
+        # If the province code is the same as the current code, this is a highly urbanized city
+        # that belongs directly to the region, not to a province
         if province_code == code:
-            # Get parent from region part (first 2 digits + zeros)
-            region_code = code[:2] + '00000000'
-            region_numeric = str(int(region_code))
-            return region_numeric if region_numeric != code_original else None
+            return region_code
         else:
-            return province_numeric
+            return province_code
+    elif level == 'SubMun':  # Sub-municipality (like districts in large cities)
+        # SubMunicipalities belong to municipalities/cities (first 5 digits + "00000")
+        return code[:5].ljust(10, '0')
     elif level == 'Bgy':  # Barangay
-        # Barangays belong to municipalities/cities
-        # Multiple patterns may exist in the dataset:
-        # 1. In municipalities under provinces: RRPPLLLLCC with parent RRPPLLLL00 (last 2 digits)
-        # 2. In municipalities under provinces: RRPPLLLCCC with parent RRPPLLL000 (last 3 digits) 
-        # 3. In cities under regions: RRP0LLLCC with parent RRP000000 (last 5 digits)
+        # Barangays belong to either:
+        # 1. SubMunicipalities (districts): if positions 6-7 are not "00" (e.g. 1380601001 -> 1380601000) 
+        # 2. Cities/Municipalities: if positions 6-7 are "00" (e.g. 1380100001 -> 1380100000)
+        sixth_seventh = code[5:7]  # positions 6-7
         
-        # Try each pattern in order of likelihood
-        patterns_to_try = [
-            lambda c: c[:8] + '00',  # Zero last 2 digits
-            lambda c: c[:7] + '000', # Zero last 3 digits
-            lambda c: c[:5] + '00000' # Zero last 5 digits
-        ]
-        
-        for pattern_func in patterns_to_try:
-            parent_code = pattern_func(code)
-            if parent_code != code:
-                # Convert back to numeric form without leading zeros
-                parent_numeric = str(int(parent_code))
-                return parent_numeric
-        
-        # If none of the patterns gave a different result
-        return None
-    elif level == 'SubMun':  # SubMunicipality
-        # SubMunicipalities belong to municipalities/cities
-        # The parent is identified by first 5 digits + '00000' (same level as the city/mun it's part of)
-        city_mun_code = code[:5] + '00000'
-        if city_mun_code != code:
-            # Convert back to numeric form without leading zeros
-            parent_numeric = str(int(city_mun_code))
-            return parent_numeric
+        if sixth_seventh != "00":
+            # Barangay belongs to a sub-municipality/district (use first 7 digits + zeros)
+            return code[:7].ljust(10, '0')
         else:
-            return None
+            # Barangay belongs directly to city/municipality (use first 5 digits + zeros)
+            return code[:5].ljust(10, '0')
     else:
         # For other levels or unknown types
         return None
@@ -127,8 +102,8 @@ def get_parent_code_with_validation(psgc_code: str, level: str, valid_codes: set
     """
     Determine the parent PSGC code and validate that it exists in the dataset.
     If the calculated parent code doesn't exist in the dataset, returns None.
-    This function addresses the "Parent code not found" validation errors that
-    occur when FHIR servers validate parent-child relationships in CodeSystems.
+    Special exception: regions (Reg) have '0000000000' as parent, which may not exist 
+    in the original dataset but is added as the root concept.
     
     Args:
         psgc_code (str): The 10-digit PSGC code
@@ -139,7 +114,9 @@ def get_parent_code_with_validation(psgc_code: str, level: str, valid_codes: set
         Optional[str]: The parent PSGC code that exists in the dataset, or None
     """
     potential_parent = get_parent_code(psgc_code, level)
-    if potential_parent and potential_parent in valid_codes:
+    if potential_parent and (potential_parent in valid_codes or potential_parent == '0000000000'):
+        # Allow the root code as a parent even if it doesn't exist in the original dataset
+        # since we add it manually as the root concept
         return potential_parent
     else:
         # This handles the case where the calculated parent code doesn't exist in the dataset
@@ -160,15 +137,16 @@ def parse_geographic_hierarchy(df: pd.DataFrame) -> List[Dict[str, Any]]:
         List[Dict[str, Any]]: List of geographic entities with hierarchy information
     """
     # Create a set of valid codes to validate parent codes against
+    # Ensure all codes are 10 digits with leading zeros for consistent matching
     valid_codes = set()
     for _, row in df.iterrows():
-        psgc_code = str(row['10-digit PSGC']).strip()
+        psgc_code = str(row['10-digit PSGC']).strip().zfill(10)  # Ensure 10 digits with leading zeros
         valid_codes.add(psgc_code)
     
     geographic_data = []
     
     for _, row in df.iterrows():
-        psgc_code = str(row['10-digit PSGC']).strip()
+        psgc_code = str(row['10-digit PSGC']).strip().zfill(10)  # Ensure 10 digits with leading zeros
         name = row['Name']
         level = row['Geographic Level']
         # Use validated parent calculation to ensure parent codes exist in the dataset
@@ -294,8 +272,49 @@ def create_fhir_codesystem_structure(geographic_data: List[Dict[str, Any]]) -> D
     Returns:
         Dict: FHIR JSON CodeSystem structure
     """
-    # Build the hierarchy tree
-    hierarchy_tree = build_hierarchy_tree(geographic_data)
+    # Create a mapping from code to entity for quick lookups
+    geo_map = {entity['code']: {**entity, 'children': []} for entity in geographic_data}
+    
+    # Properly rebuild the tree ensuring parent-child relationships are established
+    for entity in geo_map.values():
+        parent_code = entity.get('parent_code')
+        if parent_code and parent_code in geo_map:
+            # Add this entity as a child to its parent
+            geo_map[parent_code]['children'].append(entity)
+    
+    # Add the template root concept and find direct children of the root
+    # (typically regions that have '0000000000' as their parent)
+    regions = [entity for entity in geo_map.values() if entity.get('parent_code') == '0000000000']
+    
+    # Convert regions to FHIR concepts and add them as direct children of root
+    region_concepts = []
+    for region in regions:
+        fhir_concept = convert_entity_to_fhir_concept(region, include_children=True)
+        region_concepts.append(fhir_concept)
+    
+    # Create the root concept
+    root_concept = {
+        "code": "0000000000",
+        "display": "Philippine Standard Geographic Code",
+        "definition": "Philippine Standard Geographic Code"
+    }
+    
+    # Add regions as children of the root concept
+    if region_concepts:
+        root_concept["concept"] = region_concepts
+    
+    # Count the total number of concepts in the hierarchy
+    def count_concepts_in_hierarchy(concepts):
+        count = 0
+        for concept in concepts:
+            count += 1
+            if 'concept' in concept and concept['concept']:
+                count += count_concepts_in_hierarchy(concept['concept'])
+        return count
+    
+    total_concepts = 1  # Start with 1 for the root concept
+    if 'concept' in root_concept:
+        total_concepts += count_concepts_in_hierarchy(root_concept['concept'])
     
     # Create the FHIR CodeSystem structure
     fhir_structure = {
@@ -322,20 +341,15 @@ def create_fhir_codesystem_structure(geographic_data: List[Dict[str, Any]]) -> D
         "compositional": False,
         "versionNeeded": True,
         "content": "complete",
-        "count": len(geographic_data),
+        "count": total_concepts,
         "property": [
             {
                 "code": "Geographic Level",
                 "type": "string"
             }
         ],
-        "concept": []
+        "concept": [root_concept]
     }
-    
-    # Convert the hierarchy tree to FHIR concepts
-    for root_entity in hierarchy_tree:
-        fhir_concept = convert_entity_to_fhir_concept(root_entity, include_children=True)
-        fhir_structure["concept"].append(fhir_concept)
     
     return fhir_structure
 
