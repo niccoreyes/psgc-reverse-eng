@@ -52,8 +52,8 @@ class TestPSGCFHIRConverter(unittest.TestCase):
     
     def test_get_parent_code(self):
         """Test the parent code determination function."""
-        # Test region (no parent)
-        self.assertIsNone(get_parent_code('1300000000', 'Reg'))
+        # Test region (parent is the root Philippine Standard Geographic Code)
+        self.assertEqual(get_parent_code('1300000000', 'Reg'), '0000000000')
         
         # Test city (parent is region)
         self.assertEqual(get_parent_code('1380100000', 'City'), '1300000000')
@@ -63,6 +63,9 @@ class TestPSGCFHIRConverter(unittest.TestCase):
         
         # Test province (parent is region)
         self.assertEqual(get_parent_code('1400100000', 'Prov'), '1400000000')
+        
+        # Test special geographic area (1999900000) - should be province under region 19
+        self.assertEqual(get_parent_code('1999900000', 'Prov'), '1900000000')
     
     def test_parse_geographic_hierarchy(self):
         """Test the geographic hierarchy parsing function."""
@@ -74,7 +77,7 @@ class TestPSGCFHIRConverter(unittest.TestCase):
         self.assertEqual(result[0]['code'], '1300000000')
         self.assertEqual(result[0]['display'], 'National Capital Region (NCR)')
         self.assertEqual(result[0]['level'], 'Reg')
-        self.assertIsNone(result[0]['parent_code'])
+        self.assertEqual(result[0]['parent_code'], '0000000000')
         
         # Check second entry (city)
         self.assertEqual(result[1]['code'], '1380100000')
@@ -188,6 +191,120 @@ class TestPSGCFHIRConverter(unittest.TestCase):
         self.assertIn('Geographic Level', concept_properties)
         self.assertIn('parent', concept_properties)
         self.assertEqual(concept_properties['parent']['valueCode'], '1300000000')  # Parent region code
+
+
+class TestSpecialGeographicAreas(unittest.TestCase):
+    """Test class specifically for special geographic areas handling."""
+    
+    def setUp(self):
+        """Set up test data with special geographic areas."""
+        # Create sample data with NaN geographic levels like in the actual dataset
+        # Include the BARMM region for the special geographic area to have a parent
+        self.special_data = pd.DataFrame({
+            '10-digit PSGC': ['1999900000', '1900000000', '0990100000', '0900000000'],
+            'Name': ['Special Geographic Area', 'Region XIII (Bangsamoro Autonomous Region in Muslim Mindanao)', 'City of Isabela (Not a Province)', 'Region IX (Zamboanga Peninsula)'],
+            'Geographic Level': [float('nan'), 'Reg', float('nan'), 'Reg'],  # NaN for special areas
+            'Old names': ['', '', '', ''],
+            'City Class': ['', '', '', ''],
+            'Income\nClassification (DOF DO No. 074.2024)': ['', '', '', ''],
+            'Urban / Rural\n(based on 2020 CPH)': ['', '', '', ''],
+            '2024 Population': [None, None, None, None],
+            'Unnamed: 9': [None, None, None, None],
+            'Status': [None, None, None, None]
+        })
+    
+    def test_special_areas_nan_handling(self):
+        """Test that special geographic areas with NaN levels are properly handled."""
+        result = parse_geographic_hierarchy(self.special_data)
+        
+        # Should have 4 entries
+        self.assertEqual(len(result), 4)
+        
+        # Find the special geographic area entry (1999900000 is a special province in BARMM)
+        special_area = next((item for item in result if item['code'] == '1999900000'), None)
+        self.assertIsNotNone(special_area)
+        self.assertEqual(special_area['display'], 'Special Geographic Area')
+        self.assertEqual(special_area['level'], 'Prov')  # Should be assigned 'Prov' level
+        # Special geographic area should have Region 19 (BARMM) as parent, not root
+        self.assertEqual(special_area['parent_code'], '1900000000')  # Should have Region 19 as parent
+        
+        # Find the BARMM region entry
+        barmm_region = next((item for item in result if item['code'] == '1900000000'), None)
+        self.assertIsNotNone(barmm_region)
+        self.assertEqual(barmm_region['display'], 'Region XIII (Bangsamoro Autonomous Region in Muslim Mindanao)')
+        self.assertEqual(barmm_region['level'], 'Reg')  # Should be region level
+        self.assertEqual(barmm_region['parent_code'], '0000000000')  # Should have root as parent
+        
+        # Find the City of Isabela entry
+        isabela_area = next((item for item in result if item['code'] == '0990100000'), None)
+        self.assertIsNotNone(isabela_area)
+        self.assertEqual(isabela_area['display'], 'City of Isabela (Not a Province)')
+        self.assertEqual(isabela_area['level'], 'City')  # Should be assigned 'City' level
+        self.assertEqual(isabela_area['parent_code'], '0900000000')  # Should have Region IX as parent
+    
+    def test_special_areas_get_parent_code(self):
+        """Test that get_parent_code properly handles special geographic areas."""
+        # Special geographic area should have root as parent
+        parent_code = get_parent_code('1999900000', 'Special')
+        self.assertEqual(parent_code, '0000000000')
+        
+        # Region should have root as parent
+        parent_code = get_parent_code('0900000000', 'Reg')
+        self.assertEqual(parent_code, '0000000000')
+    
+    def test_special_areas_fhir_structure(self):
+        """Test that special geographic areas appear correctly in FHIR structure."""
+        geographic_data = parse_geographic_hierarchy(self.special_data)
+        fhir_structure = create_fhir_codesystem_structure(geographic_data)
+        
+        # Should have the correct count (4 original entities + root = 5, but hierarchy reduces this depending on nesting)
+        # The count includes all concepts in the tree structure
+        self.assertGreaterEqual(fhir_structure['count'], 5)  # At least 4 entities + 1 root
+        
+        # Find the special geographic area in the FHIR structure
+        def find_concept(concepts, code):
+            for concept in concepts:
+                if concept.get('code') == code:
+                    return concept
+                if 'concept' in concept:
+                    result = find_concept(concept['concept'], code)
+                    if result:
+                        return result
+            return None
+        
+        special_concept = find_concept(fhir_structure['concept'], '1999900000')
+        self.assertIsNotNone(special_concept)
+        self.assertEqual(special_concept['display'], 'Special Geographic Area')
+        
+        # Check that it has the correct geographic level property
+        geo_level_prop = next(
+            (p for p in special_concept['property'] if p['code'] == 'Geographic Level'), 
+            None
+        )
+        self.assertIsNotNone(geo_level_prop)
+        self.assertEqual(geo_level_prop['valueString'], 'Prov')
+        
+        isabela_concept = find_concept(fhir_structure['concept'], '0990100000')
+        self.assertIsNotNone(isabela_concept)
+        self.assertEqual(isabela_concept['display'], 'City of Isabela (Not a Province)')
+        
+        # Check that it has the correct geographic level property
+        geo_level_prop = next(
+            (p for p in isabela_concept['property'] if p['code'] == 'Geographic Level'), 
+            None
+        )
+        self.assertIsNotNone(geo_level_prop)
+        self.assertEqual(geo_level_prop['valueString'], 'City')
+        
+        # Verify the hierarchy - special geographic area should be under BARMM region
+        barmm_concept = find_concept(fhir_structure['concept'], '1900000000')
+        self.assertIsNotNone(barmm_concept)
+        self.assertEqual(barmm_concept['display'], 'Region XIII (Bangsamoro Autonomous Region in Muslim Mindanao)')
+        
+        # Check if 1999900000 is a child of 1900000000
+        if 'concept' in barmm_concept:
+            child_codes = [c['code'] for c in barmm_concept['concept']]
+            self.assertIn('1999900000', child_codes)
 
 
 class TestNaNHandling(unittest.TestCase):

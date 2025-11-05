@@ -82,6 +82,11 @@ def get_parent_code(psgc_code: str, level: str) -> Optional[str]:
         if code.startswith('13') and code[2:5] == '817':  # Pateros-specific case
             return region_code  # Return NCR as parent
         
+        # SPECIAL CASE: For code 1999900000, it should be treated as a province under region 19
+        # This is part of the BARMM (Region 19) special administrative area
+        if code.startswith('19999') and code.endswith('00000'):
+            return '1900000000'  # Return BARMM region as parent
+        
         # If the province code is the same as the current code, this is a highly urbanized city
         # that belongs directly to the region, not to a province
         if province_code == code:
@@ -104,20 +109,20 @@ def get_parent_code(psgc_code: str, level: str) -> Optional[str]:
             # Barangay belongs directly to city/municipality (use first 5 digits + zeros)
             return code[:5].ljust(10, '0')
     else:
-        # For other levels or unknown types
-        return None
+        # For other levels or unknown types, default to root
+        return '0000000000'
 
 
 def get_parent_code_with_validation(psgc_code: str, level: str, valid_codes: set) -> Optional[str]:
     """
     Determine the parent PSGC code and validate that it exists in the dataset.
     If the calculated parent code doesn't exist in the dataset, returns None.
-    Special exception: regions (Reg) have '0000000000' as parent, which may not exist 
-    in the original dataset but is added as the root concept.
+    Special exception: regions (Reg) and special geographic areas have '0000000000' as parent, 
+    which may not exist in the original dataset but is added as the root concept.
     
     Args:
         psgc_code (str): The 10-digit PSGC code
-        level (str): Geographic level (Reg, Prov, City, Mun, Bgy, SubMun)
+        level (str): Geographic level (Reg, Prov, City, Mun, Bgy, SubMun, Special)
         valid_codes (set): Set of all valid PSGC codes in the dataset
         
     Returns:
@@ -139,6 +144,7 @@ def parse_geographic_hierarchy(df: pd.DataFrame) -> List[Dict[str, Any]]:
     Parse the geographic hierarchy from the PSGC data.
     This function incorporates validation to ensure parent codes exist in the dataset,
     preventing "Parent code not found" errors during FHIR server validation.
+    Special handling is added for special geographic areas with NaN levels like 0990100000.
     
     Args:
         df (pd.DataFrame): DataFrame with PSGC data
@@ -159,6 +165,18 @@ def parse_geographic_hierarchy(df: pd.DataFrame) -> List[Dict[str, Any]]:
         psgc_code = str(row['10-digit PSGC']).strip().zfill(10)  # Ensure 10 digits with leading zeros
         name = row['Name']
         level = row['Geographic Level']
+        
+        # Special handling for entries with NaN geographic levels (like special geographic areas)
+        # We need to ensure these are included in the hierarchy
+        if pd.isna(level):
+            # For known special geographic areas, assign appropriate default levels
+            if psgc_code == "1999900000":
+                level = "Prov"  # Special geographic area that acts as a province in BARMM
+            elif psgc_code == "0990100000":  # Note: padded with leading zeros
+                level = "City"  # City of Isabela (Not a Province)
+            else:
+                level = "Unknown"  # Default for other NaN levels
+        
         # Use validated parent calculation to ensure parent codes exist in the dataset
         # This prevents "Parent code not found" errors during FHIR server validation
         # If a calculated parent doesn't exist in the dataset, this returns None
@@ -245,14 +263,8 @@ def convert_entity_to_fhir_concept(entity: Dict[str, Any], include_children: boo
         })
     
     # Geographic level property (matching server format - using valueString instead of valueCode)
-    # Handle NaN/None values by providing a default, since the server expects this property
-    import math
+    # Handle special cases for known special geographic areas
     level_value = entity['level']
-    if level_value is None or (isinstance(level_value, float) and math.isnan(level_value)):
-        # Provide a default value if the level is missing/NaN
-        # For PSGC codes that have missing levels, we'll use a conservative approach
-        # This addresses the specific error with codes like 990100000 and 1999900000
-        level_value = 'Unknown'
     
     properties.append({
         "code": "Geographic Level", 

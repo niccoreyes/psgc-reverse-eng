@@ -1,0 +1,56 @@
+PSGC Output vs FHIR CodeSystem Validation Report
+==================================================
+Total codes in FHIR codesystem: 43785
+Total codes in PSGC output: 43770
+Common codes: 41877
+Coverage percentage: 95.64%
+Codes unique to FHIR: 1908
+Codes unique to PSGC: 1893
+
+CODE DIFFERENCES:
+--------------------
+Codes only in FHIR codesystem (1908):
+  - 0402103001
+  - 0402103002
+  - 0402103003
+  - 0402103005
+  - 0402103006
+  - 0402103009
+  - 0402103010
+  - 0402103011
+  - 0402103015
+  - 0402103019
+  ... and 1898 more
+
+Codes only in PSGC output (1893):
+  - 0402103076
+  - 0402103077
+  - 0402103078
+  - 0402103079
+  - 0402103080
+  - 0402103081
+  - 0402103082
+  - 0402103083
+  - 0402103084
+  - 0402103085
+  ... and 1883 more
+
+HIERARCHY DIFFERENCES:
+-----------------------
+Codes with different parent assignments (1):
+  - 1999900000: FHIR=1900000000, PSGC=0000000000
+
+GEOGRAPHIC LEVEL DIFFERENCES:
+------------------------------
+Codes with different geographic level assignments (11):
+  - 0402104000: FHIR=Mun, PSGC=City
+  - 0990100000: FHIR=None, PSGC=City
+  - 1999900000: FHIR=None, PSGC=Special
+  - 1999901000: FHIR=SGU, PSGC=Mun
+  - 1999902000: FHIR=SGU, PSGC=Mun
+  - 1999903000: FHIR=SGU, PSGC=Mun
+  - 1999904000: FHIR=SGU, PSGC=Mun
+  - 1999905000: FHIR=SGU, PSGC=Mun
+  - 1999906000: FHIR=SGU, PSGC=Mun
+  - 1999907000: FHIR=SGU, PSGC=Mun
+  ... and 1 more
