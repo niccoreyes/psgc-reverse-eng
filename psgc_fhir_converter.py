@@ -197,20 +197,11 @@ def infer_geographic_level_from_code(psgc_code: str, name: str = "") -> str:
     municipality_component = code[5:7]  # positions 6-7
     barangay_component = code[7:]  # positions 8-10
     
-    # Special patterns based on official PSGC guidelines:
-    # - If positions 3-10 are '99900000': This indicates a special administrative region (e.g. BARMM)
-    # - If positions 6-10 are '99900': This might indicate special geographic areas
+
     
-    # Check for special administrative regions (like BARMM)
-    if region_code in ['19'] and province_component == '999' and municipality_component == '00' and barangay_component == '000':
-        return 'Prov'  # Special geographic area treated as province level in BARMM
-    # Additional special pattern for City of Isabela (special case but not fully standardized)
-    elif code.startswith('09901') and code.endswith('000'):
-        return 'City'  # City of Isabela special designation
-    
-    # Standard PSGC code analysis
+    # Standard PSGC code analysis based on position patterns
     # If all digits after position 2 are 0, it's a region
-    elif code[2:] == '000000000':
+    if code[2:] == '000000000':
         return 'Reg'
     
     # If digits 6-10 are 0, it's likely a province
