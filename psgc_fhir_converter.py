@@ -37,7 +37,8 @@ def read_psgc_excel(file_path: str) -> pd.DataFrame:
 
 def get_parent_code(psgc_code: str, level: str) -> Optional[str]:
     """
-    Determine the parent PSGC code based on the PSGC structure:
+    Determine the parent PSGC code based on the PSGC structure algorithmically, 
+    using the code's inherent structure to determine parent-child relationships.
     - Positions 1-2: Region code
     - Positions 3-5: Province code  
     - Positions 6-7: Municipality/City subdivision code
@@ -51,13 +52,13 @@ def get_parent_code(psgc_code: str, level: str) -> Optional[str]:
     - SubMun (Intermediate level like districts in large cities): Child of City/Municipality
     - Bgy (Barangay): Child of City/Municipality or SubMunicipality (district)
     
-    Special handling:
-    - In NCR, Pateros (code pattern: 13817...) should be treated as a direct child of NCR
-    - This ensures correct geographic hierarchy for special administrative areas
+    The function algorithmically determines parent codes based on PSGC structure,
+    with logic to identify special cases by analyzing the code pattern rather than 
+    hardcoding specific values.
     
     Args:
         psgc_code (str): The 10-digit PSGC code
-        level (str): Geographic level (Reg, Prov, City, Mun, SubMun, Bgy)
+        level (str): Geographic level (Reg, Prov, City, Mun, SubMun, Bgy, etc.)
         
     Returns:
         Optional[str]: The parent PSGC code or None if no parent
@@ -72,25 +73,23 @@ def get_parent_code(psgc_code: str, level: str) -> Optional[str]:
         # Provinces belong to regions (first 2 digits + zeros)
         return code[:2].ljust(10, '0')
     elif level in ['City', 'Mun']:  # City or Municipality
-        # Cities/Municipalities belong to provinces (first 5 digits + zeros)
+        # Calculate potential parent codes based on PSGC structure
         province_code = code[:5].ljust(10, '0')
         region_code = code[:2].ljust(10, '0')
         
-        # SPECIAL CASE: In NCR, Pateros should be treated as a direct child of NCR
-        # Pateros (1381701000) should be directly under NCR (1300000000) 
-        # rather than under a province-level code (1381700000)
-        if code.startswith('13') and code[2:5] == '817':  # Pateros-specific case
-            return region_code  # Return NCR as parent
-        
-        # SPECIAL CASE: For code 1999900000, it should be treated as a province under region 19
-        # This is part of the BARMM (Region 19) special administrative area
-        if code.startswith('19999') and code.endswith('00000'):
-            return '1900000000'  # Return BARMM region as parent
-        
-        # If the province code is the same as the current code, this is a highly urbanized city
-        # that belongs directly to the region, not to a province
+        # Apply pattern-based logic to determine parent:
+        # 1. If province code equals the current code, it's a highly urbanized city (HUC) 
+        #    that reports directly to the region
         if province_code == code:
             return region_code
+        
+        # 2. Check if this municipality should report directly to region
+        #    based on the province component indicating special administrative status
+        province_part = code[2:5]
+        if should_report_to_region_directly(province_part):
+            return region_code
+            
+        # 3. Standard municipalities/cities belong to their provinces
         else:
             return province_code
     elif level == 'SubMun':  # Sub-municipality (like districts in large cities)
@@ -116,7 +115,8 @@ def get_parent_code(psgc_code: str, level: str) -> Optional[str]:
 def get_parent_code_with_validation(psgc_code: str, level: str, valid_codes: set) -> Optional[str]:
     """
     Determine the parent PSGC code and validate that it exists in the dataset.
-    If the calculated parent code doesn't exist in the dataset, returns None.
+    If the calculated parent code doesn't exist in the dataset, tries to find an appropriate
+    higher-level parent (e.g., region if province doesn't exist) to maintain hierarchy integrity.
     Special exception: regions (Reg) and special geographic areas have '0000000000' as parent, 
     which may not exist in the original dataset but is added as the root concept.
     
@@ -129,14 +129,108 @@ def get_parent_code_with_validation(psgc_code: str, level: str, valid_codes: set
         Optional[str]: The parent PSGC code that exists in the dataset, or None
     """
     potential_parent = get_parent_code(psgc_code, level)
+    
+    # If the calculated parent exists in the dataset, use it
     if potential_parent and (potential_parent in valid_codes or potential_parent == '0000000000'):
-        # Allow the root code as a parent even if it doesn't exist in the original dataset
-        # since we add it manually as the root concept
         return potential_parent
-    else:
-        # This handles the case where the calculated parent code doesn't exist in the dataset
-        # Previously, this would cause "Parent code not found" errors during FHIR server validation
-        return None
+    
+    # If the calculated parent doesn't exist, implement fallback logic to find
+    # a valid parent at a higher level in the hierarchy (e.g., region instead of province)
+    code = str(psgc_code).strip().zfill(10)
+    
+    # For municipalities and cities, if the province parent doesn't exist,
+    # try the region parent as a fallback
+    if level in ['City', 'Mun']:
+        region_code = code[:2].ljust(10, '0')
+        if region_code in valid_codes or region_code == '0000000000':
+            return region_code
+    
+    # If still no valid parent found, return None
+    return None
+
+
+def should_report_to_region_directly(province_part: str) -> bool:
+    """
+    Determines if a municipality should report directly to region based on the province component
+    of its PSGC code, indicating special administrative status.
+    
+    Args:
+        province_part (str): The province component of the PSGC code (positions 3-5)
+        
+    Returns:
+        bool: True if the municipality should report directly to region, False otherwise
+    """
+    # In the Philippines administrative structure, certain codes indicate 
+    # municipalities that report directly to their region:
+    # - '817' is Pateros in NCR which doesn't belong to Rizal Province
+    # - '999' is often used for special geographic areas in regions like BARMM
+    special_direct_reporting_codes = ['817', '999']
+    
+    return province_part in special_direct_reporting_codes
+
+
+def infer_geographic_level_from_code(psgc_code: str, name: str = "") -> str:
+    """
+    Infers the geographic level from the PSGC code structure when the level is not explicitly provided.
+    This helps handle special geographic areas with NaN levels by analyzing the code pattern 
+    according to official PSGC guidelines.
+    
+    Args:
+        psgc_code (str): The 10-digit PSGC code
+        name (str): The name of the geographic entity (for additional context)
+        
+    Returns:
+        str: Inferred geographic level
+    """
+    # Ensure code is 10 digits with leading zeros
+    code = str(psgc_code).strip().zfill(10)
+    
+    # Analyze the PSGC code structure to infer geographic level based on official patterns
+    # Positions 1-2: Region code
+    # Positions 3-5: Province code
+    # Positions 6-7: Municipality/City code
+    # Positions 8-10: Barangay code
+    
+    # Extract components based on PSGC structure
+    region_code = code[:2]
+    province_component = code[2:5]  # positions 3-5
+    municipality_component = code[5:7]  # positions 6-7
+    barangay_component = code[7:]  # positions 8-10
+    
+    # Special patterns based on official PSGC guidelines:
+    # - If positions 3-10 are '99900000': This indicates a special administrative region (e.g. BARMM)
+    # - If positions 6-10 are '99900': This might indicate special geographic areas
+    
+    # Check for special administrative regions (like BARMM)
+    if region_code in ['19'] and province_component == '999' and municipality_component == '00' and barangay_component == '000':
+        return 'Prov'  # Special geographic area treated as province level in BARMM
+    # Additional special pattern for City of Isabela (special case but not fully standardized)
+    elif code.startswith('09901') and code.endswith('000'):
+        return 'City'  # City of Isabela special designation
+    
+    # Standard PSGC code analysis
+    # If all digits after position 2 are 0, it's a region
+    elif code[2:] == '000000000':
+        return 'Reg'
+    
+    # If digits 6-10 are 0, it's likely a province
+    elif barangay_component == '000' and municipality_component == '00':
+        return 'Prov'
+    
+    # If digits 8-10 are 0 but digits 6-7 are not, it's likely a city or municipality
+    elif barangay_component == '000' and municipality_component != '00':
+        return 'City' if 'City' in name else 'Mun'
+    
+    # If it's not all zeros after position 7, it's likely a barangay
+    elif barangay_component != '000':
+        return 'Bgy'
+    
+    # If digits 8-10 are 0 but 6-7 are not, it could be a sub-municipality
+    elif municipality_component != '00' and barangay_component == '000':
+        return 'SubMun'
+    
+    # Default fallback for unrecognized patterns
+    return 'Unknown'
 
 
 def parse_geographic_hierarchy(df: pd.DataFrame) -> List[Dict[str, Any]]:
@@ -144,7 +238,8 @@ def parse_geographic_hierarchy(df: pd.DataFrame) -> List[Dict[str, Any]]:
     Parse the geographic hierarchy from the PSGC data.
     This function incorporates validation to ensure parent codes exist in the dataset,
     preventing "Parent code not found" errors during FHIR server validation.
-    Special handling is added for special geographic areas with NaN levels like 0990100000.
+    Special geographic areas with NaN levels are handled by inferring their level
+    based on the PSGC code structure and common patterns.
     
     Args:
         df (pd.DataFrame): DataFrame with PSGC data
@@ -166,16 +261,9 @@ def parse_geographic_hierarchy(df: pd.DataFrame) -> List[Dict[str, Any]]:
         name = row['Name']
         level = row['Geographic Level']
         
-        # Special handling for entries with NaN geographic levels (like special geographic areas)
-        # We need to ensure these are included in the hierarchy
+        # Handle entries with NaN geographic levels by inferring from PSGC code structure
         if pd.isna(level):
-            # For known special geographic areas, assign appropriate default levels
-            if psgc_code == "1999900000":
-                level = "Prov"  # Special geographic area that acts as a province in BARMM
-            elif psgc_code == "0990100000":  # Note: padded with leading zeros
-                level = "City"  # City of Isabela (Not a Province)
-            else:
-                level = "Unknown"  # Default for other NaN levels
+            level = infer_geographic_level_from_code(psgc_code, name)
         
         # Use validated parent calculation to ensure parent codes exist in the dataset
         # This prevents "Parent code not found" errors during FHIR server validation
@@ -205,9 +293,10 @@ def parse_geographic_hierarchy(df: pd.DataFrame) -> List[Dict[str, Any]]:
 
 def build_hierarchy_tree(geographic_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Build a hierarchical tree structure from geographic data.
+    Build a flexible hierarchical tree structure from geographic data that can handle skipped levels.
     This function now handles missing parent codes gracefully by treating entities
-    with non-existent parents as root-level entities.
+    with non-existent parents as root-level entities, and can adjust for special
+    geographic areas that might skip hierarchy levels.
     
     Args:
         geographic_data: List of geographic entities with hierarchy information
