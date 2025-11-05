@@ -37,7 +37,7 @@ def load_json_file(file_path: str) -> Dict[str, Any]:
         return json.load(f)
 
 
-def extract_codes_and_hierarchy_optimized(data: Dict[str, Any]) -> Tuple[Set[str], Dict[str, str], Dict[str, str]]:
+def extract_codes_and_hierarchy(data: Dict[str, Any]) -> Tuple[Set[str], Dict[str, str], Dict[str, str]]:
     """
     Extract codes and parent-child relationships from a FHIR CodeSystem structure.
     This optimized version is designed to handle large datasets efficiently.
