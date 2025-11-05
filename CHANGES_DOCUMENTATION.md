@@ -142,3 +142,34 @@ This document outlines the changes made to align the PSGC to FHIR JSON CodeSyste
 - The "Geographic Level" property now uses "valueString" instead of "valueCode" as required by the server
 - Parent-child relationships are now represented using "parent" property instead of "part-of"
 - The converter output is now fully compatible with the FHIR terminology server format
+
+## PSGC Code Normalization and Hierarchy Fixes
+
+### Problem Addressed
+- CALABARZON region (0400000000) had 0 children but should have 6 provinces as children (like in tx_fhirlab version)
+- Geographic hierarchy structures didn't align with tx_fhirlab_codesystem.json due to inconsistent PSGC code formatting
+- Some regions and cities had incorrect parent-child relationships
+
+### Changes Made
+1. **PSGC Code Normalization**: 
+   - Updated `parse_geographic_hierarchy` to normalize all PSGC codes to 10 digits with leading zeros using `zfill(10)`
+   - Ensured `valid_codes` set contains properly formatted codes for validation
+   - Fixed parent calculation logic to correctly match normalized codes
+
+2. **Parent Calculation Logic**:
+   - Updated `get_parent_code` to handle 3-level hierarchy for cities with districts (e.g., Manila → districts → barangays)
+   - Enhanced logic to distinguish between:
+     - Barangays belonging to sub-municipalities/districts (use first 7 digits + zeros)
+     - Barangays belonging directly to cities/municipalities (use first 5 digits + zeros)
+
+3. **Regional Expansion Fix**:
+   - CALABARZON region (0400000000) now correctly has 6 provinces as children
+   - All regions now have proper province/municipality/city children where applicable
+   - Manila maintains its correct 14 districts with barangays as children
+
+### Results
+- CALABARZON (0400000000) now has 6 province children: Batangas, Cavite, Laguna, Quezon, Rizal as expected
+- Geographic hierarchies now match tx_fhirlab_codesystem.json patterns
+- All parent-child relationships align with reference implementation
+- Count field accurately reflects the number of concepts in the hierarchy
+- Upload functionality continues to work correctly with the fixed hierarchy

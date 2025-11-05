@@ -51,6 +51,10 @@ def get_parent_code(psgc_code: str, level: str) -> Optional[str]:
     - SubMun (Intermediate level like districts in large cities): Child of City/Municipality
     - Bgy (Barangay): Child of City/Municipality or SubMunicipality (district)
     
+    Special handling:
+    - In NCR, Pateros (code pattern: 13817...) should be treated as a direct child of NCR
+    - This ensures correct geographic hierarchy for special administrative areas
+    
     Args:
         psgc_code (str): The 10-digit PSGC code
         level (str): Geographic level (Reg, Prov, City, Mun, SubMun, Bgy)
@@ -71,6 +75,12 @@ def get_parent_code(psgc_code: str, level: str) -> Optional[str]:
         # Cities/Municipalities belong to provinces (first 5 digits + zeros)
         province_code = code[:5].ljust(10, '0')
         region_code = code[:2].ljust(10, '0')
+        
+        # SPECIAL CASE: In NCR, Pateros should be treated as a direct child of NCR
+        # Pateros (1381701000) should be directly under NCR (1300000000) 
+        # rather than under a province-level code (1381700000)
+        if code.startswith('13') and code[2:5] == '817':  # Pateros-specific case
+            return region_code  # Return NCR as parent
         
         # If the province code is the same as the current code, this is a highly urbanized city
         # that belongs directly to the region, not to a province

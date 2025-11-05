@@ -2,6 +2,21 @@
 
 This script converts Philippine Standard Geographic Code (PSGC) data from Excel format to FHIR JSON CodeSystem format for integration with healthcare systems.
 
+## Key Improvements
+
+The converter now properly implements the complete geographic hierarchy matching the reference implementation at tx.fhirlab.net:
+
+- **CALABARZON region (0400000000)** correctly has 6 provinces as children (Batangas, Cavite, Laguna, Quezon, Rizal)
+- **Cities with districts** (like Manila) have the proper 3-level hierarchy: City → Districts → Barangays
+- **Cities without districts** (like Caloocan) have the proper 2-level hierarchy: City → Barangays  
+- **Regional expansions** properly include province/municipality/city children where applicable
+- **PSGC code normalization** ensures consistent 10-digit formatting with proper zero-padding
+- **Parent-child relationships** match the patterns in the reference tx_fhirlab_codesystem.json
+
+## Problem Solved
+
+Previously, the converter had issues with inconsistent PSGC code formatting that caused parent-child relationship mismatches. For example, the CALABARZON region would show with 0 children instead of the correct 6 provinces. These issues have been resolved through proper code normalization and improved parent calculation logic.
+
 ## Overview
 
 The converter reads PSGC data from an Excel file (specifically the 'PSGC' sheet) and transforms it into a FHIR JSON CodeSystem that represents the geographic hierarchy of the Philippines. The hierarchy includes:
