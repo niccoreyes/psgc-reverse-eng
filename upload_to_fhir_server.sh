@@ -9,6 +9,7 @@ set -e  # Exit immediately if a command exits with a non-zero status
 # Default values
 INPUT_FILE="psgc_fhir_output.json"
 SERVER_URL="https://tx.fhirlab.net/fhir"
+VALUESETS_DIR=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -19,6 +20,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --server-url)
             SERVER_URL="$2"
+            shift 2
+            ;;
+        --valuesets-dir)
+            VALUESETS_DIR="$2"
             shift 2
             ;;
         --confirm)
@@ -34,13 +39,14 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help)
-            echo "Usage: $0 [--input INPUT_FILE] [--server-url SERVER_URL] [--confirm] [--dry-run] [--verbose|-v]"
+            echo "Usage: $0 [--input INPUT_FILE] [--server-url SERVER_URL] [--valuesets-dir DIR] [--confirm] [--dry-run] [--verbose|-v]"
             echo ""
-            echo "Upload PSGC FHIR CodeSystem to server with original ID for production"
+            echo "Upload PSGC FHIR CodeSystem (and optionally ValueSets) to server"
             echo ""
             echo "Options:"
-            echo "  --input INPUT_FILE    Input FHIR JSON file (default: psgc_fhir_output.json)"
+            echo "  --input INPUT_FILE    Input FHIR CodeSystem JSON file (default: psgc_fhir_output.json)"
             echo "  --server-url SERVER_URL   FHIR server URL (default: https://tx.fhirlab.net/fhir)"
+            echo "  --valuesets-dir DIR   Directory with ValueSet-*.json files to upload after CodeSystem"
             echo "  --confirm             Confirm without prompting (use with caution in production)"
             echo "  --dry-run             Perform a dry run without actually uploading"
             echo "  --verbose, -v         Enable verbose logging"
@@ -83,6 +89,7 @@ fi
 python upload_production_script.py \
     --input "$INPUT_FILE" \
     --server-url "$SERVER_URL" \
+    ${VALUESETS_DIR:+--valuesets-dir "$VALUESETS_DIR"} \
     $CONFIRM $DRY_RUN $VERBOSE
 
 echo "Production upload completed."

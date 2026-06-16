@@ -32,7 +32,7 @@ def create_test_fhir_with_nan():
     """Create a test FHIR CodeSystem with NaN values."""
     return {
         'resourceType': 'CodeSystem',
-        'id': 'psgc-geographic-codes',
+        'id': 'PSGC',
         'url': 'https://ontoserver.upmsilab.org/psgc',
         'version': '2',
         'name': 'Psgc',
@@ -101,7 +101,7 @@ def test_upload_test_script():
     
     # Test the modify_codesystem_for_test function
     try:
-        test_id = 'test-psgc-geographic-codes'
+        test_id = 'test-PSGC'
         modified_system = modify_func(fhir_codesystem, test_id)
         
         # Verify the modification worked correctly

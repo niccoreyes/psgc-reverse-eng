@@ -112,7 +112,7 @@ def test_upload_scripts():
         result = subprocess.run([
             sys.executable, './undo_script.py',
             '--server-url', 'http://localhost:8000/fhir',
-            '--codesystem-id', 'psgc-geographic-codes',
+            '--codesystem-id', 'PSGC',
             '--no-prompt'  # Skip confirmation for testing
         ], capture_output=True, text=True, timeout=30)
         

@@ -9,6 +9,8 @@ to FHIR JSON CodeSystem format for integration with healthcare systems.
 import pandas as pd
 import json
 import argparse
+import re
+import os
 from typing import Dict, List, Any, Optional
 
 
@@ -364,7 +366,15 @@ def convert_entity_to_fhir_concept(entity: Dict[str, Any], include_children: boo
     return concept
 
 
-def create_fhir_codesystem_structure(geographic_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+def derive_version_from_filename(file_path: str) -> str:
+    basename = os.path.basename(file_path)
+    match = re.match(r'PSGC-(\dQ)-(\d{4})-Publication-Datafile\.xlsx', basename)
+    if match:
+        return f"{match.group(1)}-{match.group(2)}"
+    return "unknown"
+
+
+def create_fhir_codesystem_structure(geographic_data: List[Dict[str, Any]], version: str = "1Q-2026") -> Dict[str, Any]:
     """
     Create the FHIR JSON CodeSystem structure from parsed geographic data.
     
@@ -418,27 +428,26 @@ def create_fhir_codesystem_structure(geographic_data: List[Dict[str, Any]]) -> D
     if 'concept' in root_concept:
         total_concepts += count_concepts_in_hierarchy(root_concept['concept'])
     
-    # Create the FHIR CodeSystem structure
     fhir_structure = {
         "resourceType": "CodeSystem",
-        "id": "psgc-geographic-codes",
-        "url": "https://ontoserver.upmsilab.org/psgc",
-        "version": "2",
+        "id": "PSGC",
+        "url": "https://psa.gov.ph/classification/psgc",
+        "version": version,
         "name": "Psgc",
-        "title": "PSGC - COMPLETE",
+        "title": "PSGC",
         "status": "draft",
+        "experimental": True,
         "contact": [
             {
                 "telecom": [
                     {
                         "system": "email",
-                        "value": "admin@upmsilab.org"  # Adding required value field for contact
+                        "value": "admin@upmsilab.org"
                     }
                 ]
             }
         ],
         "caseSensitive": False,
-        "valueSet": "https://ontoserver.upmsilab.org/psgc",
         "hierarchyMeaning": "part-of",
         "compositional": False,
         "versionNeeded": True,
@@ -596,8 +605,10 @@ def main():
     
     # Read the PSGC Excel file
     df = read_psgc_excel(args.input)
+    version = derive_version_from_filename(args.input)
     
     print(f"Successfully read PSGC data with {len(df)} entries")
+    print(f"Derived version from filename: {version}")
     print(f"Columns: {list(df.columns)}")
     
     # Parse the geographic hierarchy
@@ -606,7 +617,7 @@ def main():
     print(f"Parsed geographic hierarchy with {len(geographic_hierarchy)} entries")
     
     # Create FHIR CodeSystem structure
-    fhir_codesystem = create_fhir_codesystem_structure(geographic_hierarchy)
+    fhir_codesystem = create_fhir_codesystem_structure(geographic_hierarchy, version)
     
     # Validate the structure
     is_valid_basic = validate_fhir_codesystem_structure(fhir_codesystem)

@@ -11,6 +11,7 @@ import requests
 import argparse
 import os
 import sys
+import glob
 import logging
 from typing import Dict, Any, Optional
 from copy import deepcopy
@@ -225,15 +226,15 @@ def upload_codesystem_to_server(fhir_codesystem: Dict[str, Any], server_url: str
 
 
 def main():
-    """Main function to run the test upload script."""
-    parser = argparse.ArgumentParser(description='Upload PSGC FHIR CodeSystem to server with test ID')
-    parser.add_argument('--input', required=True, help='Input FHIR JSON file path')
+    parser = argparse.ArgumentParser(description='Upload PSGC FHIR CodeSystem and ValueSets to server with test ID')
+    parser.add_argument('--input', required=True, help='Input FHIR CodeSystem JSON file path')
     parser.add_argument('--server-url', required=True, help='FHIR server URL (e.g., https://tx.fhirlab.net/fhir)')
-    parser.add_argument('--test-id', default='test-psgc-geographic-codes', 
-                       help='Test ID to use for the CodeSystem (default: test-psgc-geographic-codes)')
-    parser.add_argument('--dry-run', action='store_true', 
+    parser.add_argument('--test-id', default='test-PSGC',
+                       help='Test ID to use (default: test-PSGC)')
+    parser.add_argument('--valuesets-dir', help='Directory containing ValueSet-*.json files to upload after CodeSystem')
+    parser.add_argument('--dry-run', action='store_true',
                        help='Perform a dry run without actually uploading')
-    parser.add_argument('--verbose', '-v', action='store_true', 
+    parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging')
     
     args = parser.parse_args()
@@ -241,37 +242,62 @@ def main():
     if args.verbose:
         logger.setLevel(logging.DEBUG)
     
-    # Load the FHIR CodeSystem from file
     fhir_codesystem = load_fhir_codesystem(args.input)
     if not fhir_codesystem:
         logger.error("Failed to load FHIR CodeSystem from file")
         sys.exit(1)
     
-    # Modify the CodeSystem for test purposes
     logger.info(f"Modifying CodeSystem for test with ID: {args.test_id}")
     test_codesystem = modify_codesystem_for_test(fhir_codesystem, args.test_id)
     
-    # Validate the modified CodeSystem
     if not validate_fhir_for_upload(test_codesystem):
         logger.error("Modified CodeSystem failed validation")
         sys.exit(1)
     
     if args.dry_run:
-        logger.info("Dry run mode: Skipping actual upload")
-        logger.info(f"Would upload CodeSystem with ID: {test_codesystem['id']}")
-        logger.info(f"Server URL: {args.server_url}")
+        logger.info("=== DRY RUN ===")
+        logger.info(f"Would upload CodeSystem: {test_codesystem['id']}")
+        logger.info(f"Server: {args.server_url}")
+        if args.valuesets_dir:
+            vs_files = sorted(glob.glob(os.path.join(args.valuesets_dir, "ValueSet-*.json")))
+            for vf in vs_files:
+                logger.info(f"  + {os.path.basename(vf)}")
         return 0
-    else:
-        # Upload the test CodeSystem to the server
-        logger.info(f"Uploading test CodeSystem to: {args.server_url}")
-        success = upload_codesystem_to_server(test_codesystem, args.server_url)
-        
-        if success:
-            logger.info("Test upload completed successfully")
-            return 0
-        else:
-            logger.error("Test upload failed")
-            sys.exit(1)
+    
+    logger.info(f"Uploading test CodeSystem to: {args.server_url}")
+    if not upload_codesystem_to_server(test_codesystem, args.server_url):
+        logger.error("Test CodeSystem upload failed")
+        sys.exit(1)
+    
+    if args.valuesets_dir:
+        logger.info(f"Uploading ValueSets from: {args.valuesets_dir}")
+        vs_files = sorted(glob.glob(os.path.join(args.valuesets_dir, "ValueSet-*.json")))
+        succeeded = 0
+        for vs_path in vs_files:
+            resource = load_fhir_codesystem(vs_path)
+            if not resource:
+                logger.error(f"Failed to load {vs_path}")
+                continue
+            safe = handle_nan_in_data(deepcopy(resource))
+            safe["id"] = f"test-{resource.get('id', 'unknown')}"
+            if "url" in safe:
+                safe["url"] = safe["url"].replace("fhir.doh.gov.ph", "test.fhir.doh.gov.ph")
+            headers = get_auth_headers()
+            vs_id = safe["id"]
+            resp = requests.put(
+                f"{args.server_url.rstrip('/')}/ValueSet/{vs_id}",
+                json=safe, headers=headers, timeout=30
+            )
+            count = len(safe.get("compose", {}).get("include", [{}])[0].get("concept", []))
+            if resp.status_code in [200, 201]:
+                logger.info(f"  {vs_id} ({count} concepts) OK")
+                succeeded += 1
+            else:
+                logger.error(f"  {vs_id} FAIL ({resp.status_code}): {resp.text[:200]}")
+        logger.info(f"ValueSets: {succeeded}/{len(vs_files)} succeeded")
+    
+    logger.info("Test upload completed")
+    return 0
 
 
 if __name__ == '__main__':

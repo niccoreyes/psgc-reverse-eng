@@ -14,7 +14,7 @@ def test_modify_codesystem_functionality():
     # Create a FHIR CodeSystem without NaN values (normal case)
     fhir_codesystem = {
         'resourceType': 'CodeSystem',
-        'id': 'psgc-geographic-codes',
+        'id': 'PSGC',
         'url': 'https://ontoserver.upmsilab.org/psgc',
         'version': '2',
         'name': 'Psgc',
@@ -71,7 +71,7 @@ def test_modify_codesystem_functionality():
         return fhir_codesystem_safe
     
     # Test the function
-    test_id = 'test-psgc-geographic-codes'
+    test_id = 'test-PSGC'
     result = modify_codesystem_for_test(fhir_codesystem, test_id)
     
     # Verify expected transformations

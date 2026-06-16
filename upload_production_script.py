@@ -11,6 +11,7 @@ import requests
 import argparse
 import os
 import sys
+import glob
 import logging
 from typing import Dict, Any, Optional
 import time
@@ -228,16 +229,77 @@ def upload_codesystem_to_server(fhir_codesystem: Dict[str, Any], server_url: str
         return False
 
 
+def upload_resource_to_server(resource: Dict[str, Any], server_url: str) -> bool:
+    resource_type = resource.get("resourceType", "Unknown")
+    resource_id = resource.get("id", "unknown")
+    try:
+        headers = get_auth_headers()
+        existing = requests.get(
+            f"{server_url.rstrip('/')}/{resource_type}/{resource_id}",
+            headers=headers, timeout=30
+        )
+        if existing.status_code == 200:
+            upload_url = f"{server_url.rstrip('/')}/{resource_type}/{resource_id}"
+            method = requests.put
+            logger.info(f"Updating existing {resource_type} {resource_id}")
+        else:
+            upload_url = f"{server_url.rstrip('/')}/{resource_type}"
+            method = requests.post
+            logger.info(f"Creating new {resource_type} {resource_id}")
+
+        safe = handle_nan_in_data(resource)
+        response = method(upload_url, json=safe, headers=headers, timeout=30)
+        if response.status_code in [200, 201]:
+            logger.info(f"  {resource_type}/{resource_id} OK ({response.status_code})")
+            return True
+        else:
+            logger.error(f"  {resource_type}/{resource_id} FAIL ({response.status_code}): {response.text[:200]}")
+            return False
+    except Exception as e:
+        logger.error(f"  {resource_type}/{resource_id} ERROR: {e}")
+        return False
+
+
+def upload_valuesets(valuesets_dir: str, server_url: str, dry_run: bool) -> tuple:
+    succeeded = 0
+    failed = 0
+    vs_files = sorted(glob.glob(os.path.join(valuesets_dir, "ValueSet-*.json")))
+    if not vs_files:
+        logger.warning(f"No ValueSet-*.json files found in {valuesets_dir}")
+        return 0, 0
+
+    for vs_path in vs_files:
+        resource = load_fhir_codesystem(vs_path)
+        if not resource:
+            logger.error(f"Failed to load {vs_path}")
+            failed += 1
+            continue
+        vs_id = resource.get("id", os.path.basename(vs_path))
+        count = len(resource.get("compose", {}).get("include", [{}])[0].get("concept", []))
+        logger.info(f"ValueSet {vs_id}: {count} concepts")
+
+        if dry_run:
+            logger.info(f"  Would upload {vs_id}")
+            succeeded += 1
+        else:
+            if upload_resource_to_server(resource, server_url):
+                succeeded += 1
+            else:
+                failed += 1
+
+    return succeeded, failed
+
+
 def main():
-    """Main function to run the production upload script."""
-    parser = argparse.ArgumentParser(description='Upload PSGC FHIR CodeSystem to server with original ID for production')
-    parser.add_argument('--input', required=True, help='Input FHIR JSON file path')
+    parser = argparse.ArgumentParser(description='Upload PSGC FHIR CodeSystem and ValueSets to server')
+    parser.add_argument('--input', required=True, help='Input FHIR CodeSystem JSON file path')
     parser.add_argument('--server-url', required=True, help='FHIR server URL (e.g., https://tx.fhirlab.net/fhir)')
-    parser.add_argument('--confirm', action='store_true', 
+    parser.add_argument('--valuesets-dir', help='Directory containing ValueSet-*.json files to upload after CodeSystem')
+    parser.add_argument('--confirm', action='store_true',
                        help='Confirm without prompting (use with caution in production)')
-    parser.add_argument('--dry-run', action='store_true', 
+    parser.add_argument('--dry-run', action='store_true',
                        help='Perform a dry run without actually uploading')
-    parser.add_argument('--verbose', '-v', action='store_true', 
+    parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging')
     
     args = parser.parse_args()
@@ -245,42 +307,52 @@ def main():
     if args.verbose:
         logger.setLevel(logging.DEBUG)
     
-    # Load the FHIR CodeSystem from file
     fhir_codesystem = load_fhir_codesystem(args.input)
     if not fhir_codesystem:
         logger.error("Failed to load FHIR CodeSystem from file")
         sys.exit(1)
     
-    # Validate the CodeSystem
     if not validate_fhir_for_upload(fhir_codesystem):
         logger.error("CodeSystem failed validation")
         sys.exit(1)
     
-    # Production safety check
     original_id = fhir_codesystem.get('id', 'unknown')
-    logger.info(f"Preparing to upload CodeSystem with ID: {original_id}")
+    vs_count = len(glob.glob(os.path.join(args.valuesets_dir or "", "ValueSet-*.json"))) if args.valuesets_dir else 0
+    logger.info(f"Preparing: CodeSystem {original_id}" + (f" + {vs_count} ValueSets" if vs_count else ""))
     
     if not args.confirm and not args.dry_run:
-        if not prompt_user_confirmation(f"Are you sure you want to upload the CodeSystem with ID '{original_id}' to production? This cannot be undone."):
+        msg = f"Upload CodeSystem '{original_id}'"
+        if vs_count:
+            msg += f" and {vs_count} ValueSets"
+        msg += " to production? This cannot be undone."
+        if not prompt_user_confirmation(msg):
             logger.info("Upload cancelled by user")
             return 0
     
     if args.dry_run:
-        logger.info("Dry run mode: Skipping actual upload")
-        logger.info(f"Would upload CodeSystem with ID: {original_id}")
-        logger.info(f"Server URL: {args.server_url}")
+        logger.info("=== DRY RUN ===")
+        logger.info(f"Would upload CodeSystem: {original_id}")
+        logger.info(f"Server: {args.server_url}")
+        if args.valuesets_dir:
+            vs_files = sorted(glob.glob(os.path.join(args.valuesets_dir, "ValueSet-*.json")))
+            for vf in vs_files:
+                logger.info(f"  + {os.path.basename(vf)}")
         return 0
-    else:
-        # Upload the CodeSystem to the server
-        logger.info(f"Uploading production CodeSystem to: {args.server_url}")
-        success = upload_codesystem_to_server(fhir_codesystem, args.server_url)
-        
-        if success:
-            logger.info("Production upload completed successfully")
-            return 0
-        else:
-            logger.error("Production upload failed")
+    
+    logger.info(f"Uploading CodeSystem to: {args.server_url}")
+    if not upload_codesystem_to_server(fhir_codesystem, args.server_url):
+        logger.error("CodeSystem upload failed — stopping before ValueSets")
+        sys.exit(1)
+    
+    if args.valuesets_dir:
+        logger.info(f"Uploading ValueSets from: {args.valuesets_dir}")
+        succeeded, failed = upload_valuesets(args.valuesets_dir, args.server_url, dry_run=False)
+        logger.info(f"ValueSets: {succeeded} succeeded, {failed} failed")
+        if failed:
             sys.exit(1)
+    
+    logger.info("Upload completed successfully")
+    return 0
 
 
 if __name__ == '__main__':

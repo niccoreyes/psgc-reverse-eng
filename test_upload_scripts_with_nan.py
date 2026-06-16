@@ -21,7 +21,7 @@ def test_modify_codesystem_for_test_function():
     # Create a FHIR CodeSystem with NaN values (simulating pandas output)
     fhir_codesystem = {
         'resourceType': 'CodeSystem',
-        'id': 'psgc-geographic-codes',
+        'id': 'PSGC',
         'url': 'https://ontoserver.upmsilab.org/psgc',
         'version': '2',
         'name': 'Psgc',
@@ -85,7 +85,7 @@ def test_modify_codesystem_for_test_function():
     
     # Now simulate the "deep copy" part of modify_codesystem_for_test
     print("\nSimulating modify_codesystem_for_test functionality:")
-    test_id = 'test-psgc-geographic-codes'
+    test_id = 'test-PSGC'
     
     # Create a deep copy using our safe function
     import copy
@@ -145,7 +145,7 @@ def test_upload_functionality():
     # Create a FHIR CodeSystem with NaN values
     fhir_codesystem = {
         'resourceType': 'CodeSystem',
-        'id': 'psgc-geographic-codes',
+        'id': 'PSGC',
         'url': 'https://ontoserver.upmsilab.org/psgc',
         'version': '2',
         'concept': [

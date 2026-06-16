@@ -98,7 +98,7 @@ class TestPSGCFHIRConverter(unittest.TestCase):
         
         # Check basic structure
         self.assertEqual(fhir_structure['resourceType'], 'CodeSystem')
-        self.assertEqual(fhir_structure['id'], 'psgc-geographic-codes')
+        self.assertEqual(fhir_structure['id'], 'PSGC')
         # Count should be len(geographic_data) + 1 for the root concept
         self.assertEqual(fhir_structure['count'], len(geographic_data) + 1)
         
