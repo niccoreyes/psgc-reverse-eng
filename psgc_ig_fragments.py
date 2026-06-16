@@ -91,22 +91,28 @@ def build_subset(geographic_data: list, ph_core_dir: str) -> tuple:
     return subset_entities, len(ph_core_codes)
 
 
-def emit_codesystem_fsh(output_dir: str, version: str):
-    content = f"""CodeSystem: PSGC
-Id: PSGC
-Title: "PSGC"
-Description: "Fragment declaration of the official Philippine Standard Geographic Code (published quarterly by the Philippine Statistics Authority)."
-* insert ShareableCodeSystem
-* ^url = "https://psa.gov.ph/classification/psgc"
-* ^version = "{version}"
-* ^content = #fragment
-* ^experimental = true
-"""
+def emit_codesystem_fsh(output_dir: str, version: str, subset: list):
+    lines = [
+        "CodeSystem: PSGC",
+        "Id: PSGC",
+        'Title: "PSGC"',
+        'Description: "Fragment declaration of the official Philippine Standard Geographic Code (published quarterly by the Philippine Statistics Authority)."',
+        "* insert ShareableCodeSystem",
+        '* ^url = "https://psa.gov.ph/classification/psgc"',
+        f'* ^version = "{version}"',
+        "* ^content = #fragment",
+        "* ^experimental = true",
+        "",
+    ]
+    for entity in subset:
+        lines.append(f'* #{entity["code"]} "{entity["display"]}"')
+
     path = os.path.join(output_dir, "codeSystems", "psgc.fsh")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
-        f.write(content)
-    print(f"  CodeSystem FSH → {path}")
+        f.write("\n".join(lines) + "\n")
+    count = sum(1 for l in lines if l.startswith("* #") and not l.startswith("* #fragment"))
+    print(f"  CodeSystem FSH: {count} codes → {path}")
 
 
 def emit_valueset_fsh(name: str, output_dir: str, version: str, subset: list, levels: set):
@@ -164,7 +170,7 @@ def main():
     print(f"ph-core current codes extracted: {ph_core_count}")
     print(f"Subset size: {len(subset)}")
 
-    emit_codesystem_fsh(args.output_dir, version)
+    emit_codesystem_fsh(args.output_dir, version, subset)
 
     for name in VALUE_SET_NAMES:
         emit_valueset_fsh(
