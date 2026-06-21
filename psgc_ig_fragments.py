@@ -27,24 +27,27 @@ from psgc_fhir_converter import (
     parse_geographic_hierarchy,
 )
 
-VALUE_SET_NAMES = ["regions", "provinces", "cities", "barangays"]
+VALUE_SET_NAMES = ["regions", "provinces", "cities", "barangays", "psgc"]
 VALUE_SET_TITLES = {
     "regions": "Regions",
     "provinces": "Provinces",
     "cities": "Cities",
     "barangays": "Barangays",
+    "psgc": "PSGC",
 }
 VALUE_SET_DESCRIPTIONS = {
     "regions": "The Region codes valueset includes all region values from the Philippine Standard Geographic Codes (PSGC) published by the Philippine Statistics Authority (PSA).",
     "provinces": "All province values from the Philippine Standard Geographic Codes (PSGC) published by the Philippine Statistics Authority (PSA).",
     "cities": "All city, municipality, and sub-municipality values from the Philippine Standard Geographic Codes (PSGC) published by the Philippine Statistics Authority (PSA).",
     "barangays": "The Barangay codes valueset includes all barangay values from the Philippine Standard Geographic Codes (PSGC) published by the Philippine Statistics Authority (PSA).",
+    "psgc": "All Philippine Standard Geographic Codes (PSGC) across all geographic levels.",
 }
 VALUE_SET_LEVELS = {
     "regions": {"Reg"},
     "provinces": {"Prov"},
     "cities": {"City", "Mun", "SubMun"},
     "barangays": {"Bgy"},
+    "psgc": None,
 }
 
 LEVEL_MINIMUMS = {
@@ -186,7 +189,7 @@ def emit_codesystem_fsh(output_dir: str, version: str, subset: list):
     print(f"  CodeSystem FSH: {count} hierarchical codes → {path}")
 
 
-def emit_valueset_fsh(name: str, output_dir: str, version: str, subset: list, levels: set):
+def emit_valueset_fsh(name: str, output_dir: str, version: str, subset: list, levels: set | None):
     title = VALUE_SET_TITLES[name]
     desc = VALUE_SET_DESCRIPTIONS[name]
     lines = [
@@ -200,9 +203,12 @@ def emit_valueset_fsh(name: str, output_dir: str, version: str, subset: list, le
         "* ^experimental = true",
         "",
     ]
-    for entity in subset:
-        if entity["level"] in levels:
-            lines.append(f'* $PSGC#{entity["code"]} "{entity["display"]}"')
+    if levels is None:
+        lines.append('* include codes from system https://psa.gov.ph/classification/psgc')
+    else:
+        for entity in subset:
+            if entity["level"] in levels:
+                lines.append(f'* $PSGC#{entity["code"]} "{entity["display"]}"')
 
     path = os.path.join(output_dir, "valueSets", f"{name}.fsh")
     os.makedirs(os.path.dirname(path), exist_ok=True)

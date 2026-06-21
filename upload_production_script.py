@@ -190,20 +190,9 @@ def upload_codesystem_to_server(fhir_codesystem: Dict[str, Any], server_url: str
     try:
         headers = get_auth_headers()
         
-        # Check if the CodeSystem already exists
-        existing_codesystem = get_existing_codesystem(server_url, fhir_codesystem.get('id', ''))
-        
-        # Construct the full URL for the upload
-        if existing_codesystem:
-            # PUT to update existing resource
-            upload_url = f"{server_url.rstrip('/')}/CodeSystem/{fhir_codesystem['id']}"
-            method = requests.put
-            logger.info(f"Updating existing CodeSystem with ID: {fhir_codesystem['id']}")
-        else:
-            # POST to create new resource
-            upload_url = f"{server_url.rstrip('/')}/CodeSystem"
-            method = requests.post
-            logger.info(f"Creating new CodeSystem with ID: {fhir_codesystem['id']}")
+        upload_url = f"{server_url.rstrip('/')}/CodeSystem/{fhir_codesystem['id']}"
+        method = requests.put
+        logger.info(f"Uploading CodeSystem with ID: {fhir_codesystem['id']}")
         
         # Handle NaN values before uploading to prevent JSON serialization errors
         # NaN values (from pandas DataFrames) are not JSON serializable
@@ -234,21 +223,9 @@ def upload_resource_to_server(resource: Dict[str, Any], server_url: str) -> bool
     resource_id = resource.get("id", "unknown")
     try:
         headers = get_auth_headers()
-        existing = requests.get(
-            f"{server_url.rstrip('/')}/{resource_type}/{resource_id}",
-            headers=headers, timeout=30
-        )
-        if existing.status_code == 200:
-            upload_url = f"{server_url.rstrip('/')}/{resource_type}/{resource_id}"
-            method = requests.put
-            logger.info(f"Updating existing {resource_type} {resource_id}")
-        else:
-            upload_url = f"{server_url.rstrip('/')}/{resource_type}"
-            method = requests.post
-            logger.info(f"Creating new {resource_type} {resource_id}")
-
+        upload_url = f"{server_url.rstrip('/')}/{resource_type}/{resource_id}"
         safe = handle_nan_in_data(resource)
-        response = method(upload_url, json=safe, headers=headers, timeout=30)
+        response = requests.put(upload_url, json=safe, headers=headers, timeout=30)
         if response.status_code in [200, 201]:
             logger.info(f"  {resource_type}/{resource_id} OK ({response.status_code})")
             return True

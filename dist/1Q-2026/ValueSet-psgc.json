@@ -1,0 +1,19 @@
+{
+  "resourceType": "ValueSet",
+  "id": "psgc",
+  "url": "https://fhir.doh.gov.ph/phcore/ValueSet/psgc",
+  "version": "1Q-2026",
+  "name": "PSGC",
+  "title": "PSGC",
+  "status": "draft",
+  "experimental": true,
+  "description": "All Philippine Standard Geographic Codes (PSGC) across all geographic levels.",
+  "compose": {
+    "include": [
+      {
+        "system": "https://psa.gov.ph/classification/psgc",
+        "version": "1Q-2026"
+      }
+    ]
+  }
+}

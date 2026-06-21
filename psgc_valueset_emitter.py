@@ -52,18 +52,19 @@ VALUE_SET_DEFS = {
         "url": "https://fhir.doh.gov.ph/phcore/ValueSet/barangays",
         "levels": {"Bgy"},
     },
+    "psgc": {
+        "id": "psgc",
+        "name": "PSGC",
+        "title": "PSGC",
+        "description": "All Philippine Standard Geographic Codes (PSGC) across all geographic levels.",
+        "url": "https://fhir.doh.gov.ph/phcore/ValueSet/psgc",
+        "all_codes": True,
+    },
 }
 
 
 def emit_value_set(name: str, defn: dict, geographic_data: list, version: str) -> dict:
-    concepts = []
-    for entity in geographic_data:
-        if entity.get("level") in defn["levels"]:
-            concepts.append({"code": entity["code"], "display": entity["display"]})
-
-    concepts.sort(key=lambda c: c["code"])
-
-    return {
+    vs = {
         "resourceType": "ValueSet",
         "id": defn["id"],
         "url": defn["url"],
@@ -73,7 +74,24 @@ def emit_value_set(name: str, defn: dict, geographic_data: list, version: str) -
         "status": "draft",
         "experimental": True,
         "description": defn["description"],
-        "compose": {
+    }
+
+    if defn.get("all_codes"):
+        vs["compose"] = {
+            "include": [
+                {
+                    "system": "https://psa.gov.ph/classification/psgc",
+                    "version": version,
+                }
+            ]
+        }
+    else:
+        concepts = []
+        for entity in geographic_data:
+            if entity.get("level") in defn["levels"]:
+                concepts.append({"code": entity["code"], "display": entity["display"]})
+        concepts.sort(key=lambda c: c["code"])
+        vs["compose"] = {
             "include": [
                 {
                     "system": "https://psa.gov.ph/classification/psgc",
@@ -81,8 +99,9 @@ def emit_value_set(name: str, defn: dict, geographic_data: list, version: str) -
                     "concept": concepts,
                 }
             ]
-        },
-    }
+        }
+
+    return vs
 
 
 def main():
@@ -111,8 +130,11 @@ def main():
         path = os.path.join(args.output_dir, f"ValueSet-{name}.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(vs, f, indent=2, ensure_ascii=False)
-        count = len(vs["compose"]["include"][0]["concept"])
-        print(f"  {name}: {count} concepts → {path}")
+        if defn.get("all_codes"):
+            print(f"  {name}: all codes → {path}")
+        else:
+            count = len(vs["compose"]["include"][0]["concept"])
+            print(f"  {name}: {count} concepts → {path}")
 
 
 if __name__ == "__main__":

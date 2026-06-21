@@ -8,7 +8,7 @@ This repository converts Philippine Standard Geographic Code (PSGC) data from PS
 # Standalone CodeSystem (full hierarchy, ~43k concepts)
 python psgc_fhir_converter.py --input PSGC-<q>-<year>-Publication-Datafile.xlsx --output dist/<q>-<year>/CodeSystem-PSGC.json
 
-# Four standalone ValueSets (flat concept lists)
+# Five standalone ValueSets (4 flat concept lists + 1 "all codes" by system)
 python psgc_valueset_emitter.py --input PSGC-<q>-<year>-Publication-Datafile.xlsx --output-dir dist/<q>-<year>/
 
 # IG-fragment FSH files for ph-core
@@ -24,6 +24,7 @@ python psgc_ig_fragments.py --input PSGC-<q>-<year>-Publication-Datafile.xlsx --
 | Provinces | `https://fhir.doh.gov.ph/phcore/ValueSet/provinces` |
 | Cities | `https://fhir.doh.gov.ph/phcore/ValueSet/cities` |
 | Barangays | `https://fhir.doh.gov.ph/phcore/ValueSet/barangays` |
+| PSGC (all) | `https://fhir.doh.gov.ph/phcore/ValueSet/psgc` |
 
 ### Geographic levels (7 distinct)
 
