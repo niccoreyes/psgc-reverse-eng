@@ -48,6 +48,11 @@ def handle_nan_in_data(obj):
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Timeout (seconds) for a single FHIR HTTP call. The PSGC CodeSystem is ~24 MB;
+# the server can take longer than 30s to accept/process it, which previously
+# caused a client-side read timeout even though the PUT had already succeeded.
+REQUEST_TIMEOUT = 300
+
 
 def load_fhir_codesystem(file_path: str) -> Optional[Dict[str, Any]]:
     """
@@ -140,7 +145,7 @@ def get_existing_codesystem(server_url: str, codesystem_id: str) -> Optional[Dic
         # Construct the URL for the specific CodeSystem
         codesystem_url = f"{server_url.rstrip('/')}/CodeSystem/{codesystem_id}"
         
-        response = requests.get(codesystem_url, headers=headers, timeout=30)
+        response = requests.get(codesystem_url, headers=headers, timeout=REQUEST_TIMEOUT)
         
         if response.status_code == 200:
             return response.json()
@@ -199,7 +204,7 @@ def upload_codesystem_to_server(fhir_codesystem: Dict[str, Any], server_url: str
         safe_fhir_codesystem = handle_nan_in_data(fhir_codesystem)
         
         # Make the request to create/update the resource
-        response = method(upload_url, json=safe_fhir_codesystem, headers=headers, timeout=30)
+        response = method(upload_url, json=safe_fhir_codesystem, headers=headers, timeout=REQUEST_TIMEOUT)
         
         if response.status_code in [200, 201]:  # Success or created
             logger.info(f"Successfully uploaded CodeSystem with ID: {fhir_codesystem.get('id', 'unknown')}")
@@ -225,7 +230,7 @@ def upload_resource_to_server(resource: Dict[str, Any], server_url: str) -> bool
         headers = get_auth_headers()
         upload_url = f"{server_url.rstrip('/')}/{resource_type}/{resource_id}"
         safe = handle_nan_in_data(resource)
-        response = requests.put(upload_url, json=safe, headers=headers, timeout=30)
+        response = requests.put(upload_url, json=safe, headers=headers, timeout=REQUEST_TIMEOUT)
         if response.status_code in [200, 201]:
             logger.info(f"  {resource_type}/{resource_id} OK ({response.status_code})")
             return True

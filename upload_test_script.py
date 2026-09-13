@@ -22,6 +22,11 @@ from psgc_fhir_converter import validate_fhir_codesystem_structure, validate_aga
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Timeout (seconds) for a single FHIR HTTP call. The PSGC CodeSystem is ~24 MB;
+# the server can take longer than 30s to accept/process it, which previously
+# caused a client-side read timeout even though the PUT had already succeeded.
+REQUEST_TIMEOUT = 300
+
 
 def load_fhir_codesystem(file_path: str) -> Optional[Dict[str, Any]]:
     """
@@ -206,7 +211,7 @@ def upload_codesystem_to_server(fhir_codesystem: Dict[str, Any], server_url: str
         safe_fhir_codesystem = handle_nan_in_data(fhir_codesystem)
         
         # Make the PUT request to update/create the resource with this ID
-        response = requests.put(upload_url, json=safe_fhir_codesystem, headers=headers, timeout=30)
+        response = requests.put(upload_url, json=safe_fhir_codesystem, headers=headers, timeout=REQUEST_TIMEOUT)
         
         if response.status_code in [200, 201]:  # Success or created
             logger.info(f"Successfully uploaded/updated CodeSystem with ID: {codesystem_id}")
@@ -286,7 +291,7 @@ def main():
             vs_id = safe["id"]
             resp = requests.put(
                 f"{args.server_url.rstrip('/')}/ValueSet/{vs_id}",
-                json=safe, headers=headers, timeout=30
+                json=safe, headers=headers, timeout=REQUEST_TIMEOUT
             )
             count = len(safe.get("compose", {}).get("include", [{}])[0].get("concept", []))
             if resp.status_code in [200, 201]:
