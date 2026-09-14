@@ -4,7 +4,7 @@ Title: "Provinces"
 Description: "All province values from the Philippine Standard Geographic Codes (PSGC) published by the Philippine Statistics Authority (PSA)."
 * insert ShareableValueSet
 * ^url = "https://fhir.doh.gov.ph/phcore/ValueSet/provinces"
-* ^version = "1Q-2026"
+* ^version = "2Q-2026"
 * ^experimental = true
 
 * $PSGC#0102800000 "Ilocos Norte"

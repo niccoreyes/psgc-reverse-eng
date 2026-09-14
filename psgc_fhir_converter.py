@@ -206,9 +206,12 @@ def infer_geographic_level_from_code(psgc_code: str, name: str = "") -> str:
     if code[2:] == '000000000':
         return 'Reg'
     
-    # If digits 6-10 are 0, it's likely a province
+    # If digits 6-10 are 0, it's likely a province or a city (independent city)
     elif barangay_component == '000' and municipality_component == '00':
-        return 'Prov'
+        if 'City' in name:
+            return 'City'
+        else:
+            return 'Prov'
     
     # If digits 8-10 are 0 but digits 6-7 are not, it's likely a city or municipality
     elif barangay_component == '000' and municipality_component != '00':
@@ -602,6 +605,11 @@ def main():
     parser.add_argument('--output', required=True, help='Output JSON file path')
     
     args = parser.parse_args()
+    
+    # Create output directory if it doesn't exist
+    output_dir = os.path.dirname(args.output)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
     
     # Read the PSGC Excel file
     df = read_psgc_excel(args.input)

@@ -1,32 +1,42 @@
 # PSGC to FHIR JSON CodeSystem Converter
 
-This project converts Philippine Standard Geographic Code (PSGC) data from Excel format to FHIR JSON format for integration with healthcare systems. It emits a full-hierarchy standalone CodeSystem, four flat-list ValueSets, and IG-fragment FSH files for the ph-core Implementation Guide.
+This project converts Philippine Standard Geographic Code (PSGC) data from Excel format to FHIR JSON format for integration with healthcare systems. It emits a full-hierarchy standalone CodeSystem, **five** flat-list ValueSets (including an "all codes" ValueSet), and IG-fragment FSH files for the ph-core Implementation Guide.
 
-## Latest: 1Q-2026
+## Latest: 2Q-2026
 
-Pre-generated artifacts are in this repo:
+Pre-generated artifacts are in this repo and available for direct download from **GitHub Releases** (no clone required):
 
 ```
-dist/1Q-2026/
-├── CodeSystem-PSGC.json      # 43,769 concepts, full hierarchy
+dist/2Q-2026/
+├── CodeSystem-PSGC.json      # 43,768 concepts, full hierarchy
 ├── ValueSet-regions.json     # 18 regions
-├── ValueSet-provinces.json   # 84 provinces
-├── ValueSet-cities.json      # 1,656 (City + Mun + SubMun merged)
-└── ValueSet-barangays.json   # 42,010 barangays
+├── ValueSet-provinces.json   # 83 provinces
+├── ValueSet-cities.json      # 1,657 (City + Mun + SubMun merged)
+├── ValueSet-barangays.json   # 42,010 barangays
+└── ValueSet-psgc.json        # All codes (43,768 concepts)
 
 dist/psgc-fsh-fragments/
 ├── codeSystems/psgc.fsh      # URL-only fragment for ph-core IG
-└── valueSets/                # 4 FSH files with curated subset
+└── valueSets/                # 5 FSH files with curated subset
 ```
+
+### GitHub Releases (Direct Downloads)
+
+Each quarterly release is published to GitHub Releases for direct artifact downloads:
+
+- **2Q-2026**: https://github.com/niccoreyes/psgc-reverse-eng/releases/tag/2Q-2026
+- **1Q-2026**: https://github.com/niccoreyes/psgc-reverse-eng/releases/tag/Q1-2026
+
+Each release includes all 11 artifacts (6 JSON + 5 FSH files).
 
 ### Regenerate for a new quarter
 
 ```bash
-# 1. Drop the latest PSGC xlsx in this directory
+# 1. Drop the latest PSGC xlsx in this directory (e.g., PSGC-2Q-2026-Publication-Datafile.xlsx)
 # 2. Run:
-python psgc_fhir_converter.py --input PSGC-1Q-2026-Publication-Datafile.xlsx --output dist/1Q-2026/CodeSystem-PSGC.json
-python psgc_valueset_emitter.py --input PSGC-1Q-2026-Publication-Datafile.xlsx --output-dir dist/1Q-2026/
-python psgc_ig_fragments.py --input PSGC-1Q-2026-Publication-Datafile.xlsx --output-dir dist/psgc-fsh-fragments/
+python psgc_fhir_converter.py --input PSGC-2Q-2026-Publication-Datafile.xlsx --output dist/2Q-2026/CodeSystem-PSGC.json
+python psgc_valueset_emitter.py --input PSGC-2Q-2026-Publication-Datafile.xlsx --output-dir dist/2Q-2026/
+python psgc_ig_fragments.py --input PSGC-2Q-2026-Publication-Datafile.xlsx --output-dir dist/psgc-fsh-fragments/
 ```
 
 ## Key Improvements
@@ -38,14 +48,14 @@ The converter properly implements the complete geographic hierarchy matching the
 - **Cities without districts** (like Caloocan) have the proper 2-level hierarchy: City → Barangays
 - **PSGC code normalization** ensures consistent 10-digit formatting with proper zero-padding
 - **Parent-child relationships** match the patterns in the reference tx_fhirlab_codesystem.json
-- **Four ValueSets** emitted alongside the CodeSystem (regions, provinces, cities, barangays)
+- **Five ValueSets** emitted alongside the CodeSystem (regions, provinces, cities, barangays, plus all-codes)
 
 ## Overview
 
 The converter reads PSGC data from an Excel file (the 'PSGC' sheet) and transforms it into:
 
 - A FHIR JSON CodeSystem with nested concept hierarchy (`hierarchyMeaning: part-of`)
-- Four FHIR JSON ValueSets with flat concept lists for each administrative level
+- **Five** FHIR JSON ValueSets with flat concept lists for each administrative level (regions, provinces, cities, barangays, plus all-codes)
 - IG-fragment FSH files for the ph-core Implementation Guide
 
 ## Requirements
@@ -72,7 +82,7 @@ python psgc_valueset_emitter.py --input <xlsx> --output-dir <dir>
 python psgc_ig_fragments.py --input <xlsx> --output-dir <dir>
 ```
 
-See the [Latest](#latest-1q-2026) section above for a complete example with the current data.
+See the [Latest](#latest-2q-2026) section above for a complete example with the current data.
 
 ## Features
 
@@ -80,7 +90,7 @@ See the [Latest](#latest-1q-2026) section above for a complete example with the 
 - Preserves the geographic hierarchy (Region → Province/City → Municipality → Barangay)
 - Implements `part-of` relationships to represent parent-child geographic connections
 - Includes the `Geographic Level` property for each concept
-- Emits four FHIR ValueSet JSON resources (regions, provinces, cities, barangays)
+- Emits **five** FHIR ValueSet JSON resources (regions, provinces, cities, barangays, all-codes)
 - Generates IG-fragment FSH files for the ph-core Implementation Guide
 - Validates the generated JSON against FHIR CodeSystem schema
 - Seven distinct geographic levels: Reg, Prov, City, Mun, SubMun, SGU, Bgy
@@ -102,7 +112,7 @@ The resulting JSON follows the FHIR CodeSystem resource specification with:
 - `resourceType`: `CodeSystem`
 - `id`: `PSGC`
 - `url`: `https://psa.gov.ph/classification/psgc`
-- `version`: Derived from the source filename (e.g., `1Q-2026`)
+- `version`: Derived from the source filename (e.g., `2Q-2026`)
 - `hierarchyMeaning`: `part-of` for parent-child relationships
 - `experimental`: `true`
 - `caseSensitive`: `false`
@@ -113,25 +123,28 @@ The resulting JSON follows the FHIR CodeSystem resource specification with:
 
 | File | Destination | Description |
 |------|-------------|-------------|
-| `CodeSystem-PSGC.json` | OntoServer / tx.fhirlab | Full hierarchy, ~42k concepts, `content: complete` |
-| `ValueSet-regions.json` | OntoServer | ~18 regions (flat list) |
-| `ValueSet-provinces.json` | OntoServer | ~84 provinces (flat list) |
-| `ValueSet-cities.json` | OntoServer | City + Mun + SubMun merged (flat list, ~1,650) |
-| `ValueSet-barangays.json` | OntoServer | ~42k barangays (flat list) |
+| `CodeSystem-PSGC.json` | OntoServer / tx.fhirlab | Full hierarchy, ~43,768 concepts, `content: complete` |
+| `ValueSet-regions.json` | OntoServer | 18 regions (flat list) |
+| `ValueSet-provinces.json` | OntoServer | 83 provinces (flat list) |
+| `ValueSet-cities.json` | OntoServer | City + Mun + SubMun merged (flat list, 1,657) |
+| `ValueSet-barangays.json` | OntoServer | 42,010 barangays (flat list) |
+| `ValueSet-psgc.json` | OntoServer | All PSGC codes (flat list, 43,768) |
 | `codeSystems/psgc.fsh` | ph-core IG | URL-only fragment, `^content = #fragment` |
-| `valueSets/*.fsh` | ph-core IG | URL + curated illustrative subset (\(\geq\) 20 codes) |
+| `valueSets/*.fsh` | ph-core IG | URL + curated illustrative subset (≥20 codes) |
 
 ## Geographic Level Taxonomy
 
-| Level | Count (approx.) | Preserved in CodeSystem | Enumerated in ValueSet |
+| Level | Count (2Q-2026) | Preserved in CodeSystem | Enumerated in ValueSet |
 |-------|-----------------|------------------------|------------------------|
 | `Reg` | 18 | yes | `regions` |
-| `Prov` | 84 | yes | `provinces` |
+| `Prov` | 83 | yes | `provinces` |
 | `City` | 1,634 | yes | `cities` |
-| `Mun` | 1,500 | yes | `cities` |
-| `SubMun` | ~few | yes | `cities` |
-| `SGU` | ~119 | yes | (none — special geographic areas) |
-| `Bgy` | 42,046 | yes | `barangays` |
+| `Mun` | 1,493 | yes | `cities` |
+| `SubMun` | 14 | yes | `cities` |
+| `SGU` | 119 | yes | (none — special geographic areas) |
+| `Bgy` | 42,010 | yes | `barangays` |
+
+**Total**: 43,768 concepts across 7 geographic levels
 
 ## Cities ValueSet: City + Mun + SubMun Merge
 
@@ -169,9 +182,9 @@ deterministic (no random sampling) and reproducible across runs.
 ## Versioning
 
 The `version` field is derived from the input filename pattern:
-`PSGC-1Q-2026-Publication-Datafile.xlsx` → `1Q-2026`. If the filename does not
+`PSGC-2Q-2026-Publication-Datafile.xlsx` → `2Q-2026`. If the filename does not
 match the expected pattern, the version defaults to `unknown`. All emitted
-resources (CodeSystem and all four ValueSets) share the same version string,
+resources (CodeSystem and all **five** ValueSets) share the same version string,
 which conforms to the FHIR R4 resource `version` field (`[A-Za-z0-9\-\.]{1,64}`).
 
 ## Output Format
@@ -198,19 +211,19 @@ Use the shell wrappers — they handle virtualenv activation and default flags.
 
 ```bash
 # Preview what would be uploaded (no changes made)
-./upload_to_fhir_server.sh --input dist/1Q-2026/CodeSystem-PSGC.json --valuesets-dir dist/1Q-2026/ --dry-run
+./upload_to_fhir_server.sh --input dist/2Q-2026/CodeSystem-PSGC.json --valuesets-dir dist/2Q-2026/ --dry-run
 ```
 
 ### Test upload (isolated ID, won't affect production)
 
 ```bash
-./upload_test_to_fhir_server.sh --input dist/1Q-2026/CodeSystem-PSGC.json --test-id test-PSGC --valuesets-dir dist/1Q-2026/
+./upload_test_to_fhir_server.sh --input dist/2Q-2026/CodeSystem-PSGC.json --test-id test-PSGC --valuesets-dir dist/2Q-2026/
 ```
 
 ### Production upload
 
 ```bash
-./upload_to_fhir_server.sh --input dist/1Q-2026/CodeSystem-PSGC.json --valuesets-dir dist/1Q-2026/ --confirm
+./upload_to_fhir_server.sh --input dist/2Q-2026/CodeSystem-PSGC.json --valuesets-dir dist/2Q-2026/ --confirm
 ```
 
 ### Undo / remove
